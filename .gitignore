@@ -1,0 +1,18 @@
+# Grosse base de donnees (PAS necessaire en ligne : l'app recupere en direct)
+pmu.db
+pmu.db-wal
+pmu.db-shm
+features_cache.pkl
+
+# Logs et temporaires
+*.log
+__pycache__/
+*.pyc
+test_selection.pdf
+diag_out.txt
+bf_out.txt
+br_out.txt
+dc_out.txt
+
+# Secrets (mot de passe eventuel)
+.streamlit/secrets.toml
