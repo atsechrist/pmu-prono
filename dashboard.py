@@ -353,19 +353,25 @@ def afficher_perf(hist, strat, label_succes, txt_fort, txt_moyen):
     st.caption("Gains cumulés (mise 1€/pari depuis 2021) :")
     st.line_chart(piv, height=260)
 
-    # --- Récap MENSUEL (FORT) pour suivre la bankroll ---
-    st.markdown("**📅 Récap par mois — 🟢 FORT** (mise 1€/pari) :")
-    f = h[h["confiance"] == "FORT"].copy()
-    f["Mois"] = f["date"].dt.to_period("M").astype(str)
-    pm = f.groupby("Mois").agg(paris=("paris", "sum"), succes=("succes", "sum"),
-                               profit=("profit", "sum")).reset_index()
-    pm["Bankroll (€)"] = pm["profit"].cumsum().round(0).astype(int)
-    pm[label_succes] = (pm["succes"] / pm["paris"] * 100).round(0).astype(int).astype(str) + "%"
-    pm["ROI"] = (pm["profit"] / pm["paris"] * 100).round(1).astype(str) + "%"
-    pm["Bénéfice (€)"] = pm["profit"].round(0).astype(int)
-    pm = pm.rename(columns={"paris": "Paris"})
-    vue = pm[["Mois", "Paris", label_succes, "Bénéfice (€)", "Bankroll (€)", "ROI"]]
-    st.dataframe(vue, use_container_width=True, hide_index=True, height=min(500, 60 + 35 * len(vue)))
+    # --- Récap MENSUEL par niveau (FORT et Moyen) pour suivre la bankroll ---
+    def table_mensuelle(niveau, titre):
+        sub = h[h["confiance"] == niveau].copy()
+        if sub.empty:
+            return
+        st.markdown(f"**📅 Récap par mois — {titre}** (mise 1€/pari) :")
+        sub["Mois"] = sub["date"].dt.to_period("M").astype(str)
+        pm = sub.groupby("Mois").agg(paris=("paris", "sum"), succes=("succes", "sum"),
+                                     profit=("profit", "sum")).reset_index()
+        pm["Bankroll (€)"] = pm["profit"].cumsum().round(0).astype(int)
+        pm[label_succes] = (pm["succes"] / pm["paris"] * 100).round(0).astype(int).astype(str) + "%"
+        pm["ROI"] = (pm["profit"] / pm["paris"] * 100).round(1).astype(str) + "%"
+        pm["Bénéfice (€)"] = pm["profit"].round(0).astype(int)
+        pm = pm.rename(columns={"paris": "Paris"})
+        vue = pm[["Mois", "Paris", label_succes, "Bénéfice (€)", "Bankroll (€)", "ROI"]]
+        st.dataframe(vue, use_container_width=True, hide_index=True, height=min(500, 60 + 35 * len(vue)))
+
+    table_mensuelle("FORT", "🟢 FORT")
+    table_mensuelle("Moyen", "🟡 Moyen")
 
 if not os.path.exists("historique_perf.csv"):
     st.info("Historique pas encore genere. Lance `python historique.py` une fois pour le creer.")
