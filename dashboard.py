@@ -353,6 +353,20 @@ def afficher_perf(hist, strat, label_succes, txt_fort, txt_moyen):
     st.caption("Gains cumulés (mise 1€/pari depuis 2021) :")
     st.line_chart(piv, height=260)
 
+    # --- Récap MENSUEL (FORT) pour suivre la bankroll ---
+    st.markdown("**📅 Récap par mois — 🟢 FORT** (mise 1€/pari) :")
+    f = h[h["confiance"] == "FORT"].copy()
+    f["Mois"] = f["date"].dt.to_period("M").astype(str)
+    pm = f.groupby("Mois").agg(paris=("paris", "sum"), succes=("succes", "sum"),
+                               profit=("profit", "sum")).reset_index()
+    pm["Bankroll (€)"] = pm["profit"].cumsum().round(0).astype(int)
+    pm[label_succes] = (pm["succes"] / pm["paris"] * 100).round(0).astype(int).astype(str) + "%"
+    pm["ROI"] = (pm["profit"] / pm["paris"] * 100).round(1).astype(str) + "%"
+    pm["Bénéfice (€)"] = pm["profit"].round(0).astype(int)
+    pm = pm.rename(columns={"paris": "Paris"})
+    vue = pm[["Mois", "Paris", label_succes, "Bénéfice (€)", "Bankroll (€)", "ROI"]]
+    st.dataframe(vue, use_container_width=True, hide_index=True, height=min(500, 60 + 35 * len(vue)))
+
 if not os.path.exists("historique_perf.csv"):
     st.info("Historique pas encore genere. Lance `python historique.py` une fois pour le creer.")
 else:
@@ -394,6 +408,18 @@ else:
             }).set_index("mois")
             st.caption("Profit cumulé (mise 1€/course depuis 2021) :")
             st.line_chart(courbe, height=260)
+
+            # --- Récap MENSUEL Quinté (ordre + désordre + bankroll) ---
+            st.markdown("**📅 Récap par mois** (mise 1€/course) :")
+            q = hq.copy()
+            q["Bénéf. Ordre (€)"] = (q["gain_ordre"] - q["mise"]).round(0).astype(int)
+            q["Bénéf. Désordre (€)"] = (q["gain_des"] - q["mise"]).round(0).astype(int)
+            q["Bankroll Ordre (€)"] = (q["gain_ordre"] - q["mise"]).cumsum().round(0).astype(int)
+            q["Bankroll Désordre (€)"] = (q["gain_des"] - q["mise"]).cumsum().round(0).astype(int)
+            q = q.rename(columns={"mois": "Mois", "courses": "Quinté"})
+            vueq = q[["Mois", "Quinté", "Bénéf. Ordre (€)", "Bénéf. Désordre (€)",
+                      "Bankroll Ordre (€)", "Bankroll Désordre (€)"]]
+            st.dataframe(vueq, use_container_width=True, hide_index=True, height=min(500, 60 + 35 * len(vueq)))
 
             st.error(
                 f"⚠️ Ne te fie PAS a ces montants positifs. Le jeu **Ordre n'est tombé que "
