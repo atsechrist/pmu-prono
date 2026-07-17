@@ -141,8 +141,8 @@ def bloc_reussite(titre, sous_ensemble):
         c3.metric("Réussite (placés)", "—")
         c4.metric("Bénéfice (1€/pari)", "—")
 
-bloc_reussite("💎 SUPER FORT (proba ≥ 90%)", top[top["proba_place"] >= 0.9])
-bloc_reussite("🟢 FORT (proba 60–90%)", top[(top["proba_place"] >= 0.6) & (top["proba_place"] < 0.9)])
+bloc_reussite("💎 SUPER FORT (proba ≥ 80%)", top[top["proba_place"] >= 0.8])
+bloc_reussite("🟢 FORT (proba 60–80%)", top[(top["proba_place"] >= 0.6) & (top["proba_place"] < 0.8)])
 bloc_reussite("🟡 Moyen (proba < 60%)", top[top["proba_place"] < 0.6])
 
 top["Heure GMT"] = top["heure"].apply(heure_gmt)
@@ -158,15 +158,15 @@ def format_table(sous_ensemble):
     v["Proba placé"] = (v["Proba placé"] * 100).round(0).astype(int).astype(str) + "%"
     return v
 
-super_ = top[top["proba_place"] >= 0.9]
-fort = top[(top["proba_place"] >= 0.6) & (top["proba_place"] < 0.9)]
+super_ = top[top["proba_place"] >= 0.8]
+fort = top[(top["proba_place"] >= 0.6) & (top["proba_place"] < 0.8)]
 moyen = top[top["proba_place"] < 0.6]
 a_jouer = top[top["proba_place"] >= 0.6]
 
 # ═══ LA LISTE À JOUER : Placé (Super Fort + Fort), isolé ═══
 st.subheader(f"🎯 À JOUER — {len(a_jouer)} paris Placé")
-st.caption(f"Ordre : **{tri_placé}** (idem PDF). 💎 SUPER FORT = les plus sûrs (~93% de placés, "
-           "mais petits gains) ; 🟢 FORT = meilleur compromis.")
+st.caption(f"Ordre : **{tri_placé}** (idem PDF). 💎 SUPER FORT (≥80%) = le meilleur choix "
+           "(~85% de placés, ROI +10,6%) ; 🟢 FORT (60-80%) = bon aussi.")
 if len(super_):
     st.markdown(f"**💎 SUPER FORT — {len(super_)} paris**")
     st.dataframe(format_table(super_), use_container_width=True, hide_index=True,
@@ -340,8 +340,8 @@ st.warning("⚠️ Les ROI positifs viennent en partie d'effets structurels du m
            "(favoris sous-paries au placé). En pariant pour de vrai, ta mise fait BAISSER le "
            "rapport → rendement reel plus bas. A voir comme un plafond optimiste, pas une promesse.")
 
-NIVEAUX = {"SUPER": "💎 SUPER FORT (proba ≥ 90%)",
-           "FORT": "🟢 FORT", "Moyen": "🟡 Moyen"}
+NIVEAUX = {"SUPER": "💎 SUPER FORT (proba ≥ 80%)",
+           "FORT": "🟢 FORT (60-80%)", "Moyen": "🟡 Moyen"}
 ORDRE_NIV = ["SUPER", "FORT", "Moyen"]
 
 def afficher_perf(hist, strat, label_succes):
@@ -391,8 +391,8 @@ else:
     hist["date"] = pd.to_datetime(hist["date"])
     tab_p, tab_g, tab_q = st.tabs(["⭐ Placé", "🏆 Gagnant", "🎰 Quinté+"])
     with tab_p:
-        st.caption("💎 SUPER FORT (≥90%) = ultra-sûr (~93% de placés) mais petits gains ; "
-                   "🟢 FORT (60-90%) = meilleur compromis.")
+        st.caption("💎 SUPER FORT (≥80%) = le meilleur choix (~85% de placés, ROI +10,6%, "
+                   "beaucoup de paris) ; 🟢 FORT (60-80%) = bon aussi.")
         afficher_perf(hist, "PLACE", "Taux de placé")
     with tab_g:
         st.caption("Le Gagnant est plus variable : des mois entiers peuvent etre negatifs.")
