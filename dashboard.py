@@ -334,8 +334,9 @@ st.warning("⚠️ Les ROI positifs viennent en partie d'effets structurels du m
            "(favoris sous-paries au placé). En pariant pour de vrai, ta mise fait BAISSER le "
            "rapport → rendement reel plus bas. A voir comme un plafond optimiste, pas une promesse.")
 
-NIVEAUX = {"FORT": "🟢 FORT", "Moyen": "🟡 Moyen"}
-ORDRE_NIV = ["SUPER", "FORT", "Moyen"]
+NIVEAUX = {"FORT": "🟢 FORT", "Moyen": "🟡 Moyen",
+           "MIX": "🎲 MIX (Placé Fort + Gagnant Moyen)"}
+ORDRE_NIV = ["SUPER", "FORT", "Moyen", "MIX"]
 
 def afficher_perf(hist, strat, label_succes):
     h = hist[hist["strategie"] == strat]
@@ -382,7 +383,7 @@ if not os.path.exists("historique_perf.csv"):
 else:
     hist = pd.read_csv("historique_perf.csv")
     hist["date"] = pd.to_datetime(hist["date"])
-    tab_p, tab_g, tab_q = st.tabs(["⭐ Placé", "🏆 Gagnant", "🎰 Quinté+"])
+    tab_p, tab_g, tab_m, tab_q = st.tabs(["⭐ Placé", "🏆 Gagnant", "🎲 Mix", "🎰 Quinté+"])
     with tab_p:
         afficher_perf(hist, "PLACE", "Taux de placé")
         # --- Telechargement du detail d'un mois (Placé FORT, par heure) ---
@@ -401,6 +402,10 @@ else:
     with tab_g:
         st.caption("Le Gagnant est plus variable : des mois entiers peuvent etre negatifs.")
         afficher_perf(hist, "GAGNANT", "Taux de victoire")
+    with tab_m:
+        st.caption("🎲 MIX = **Placé FORT** (stable) + **Gagnant Moyen** (variable) joués ensemble. "
+                   "~2 paris par course. Le bénéfice total est le plus élevé de toutes les stratégies.")
+        afficher_perf(hist, "MIX", "Taux de réussite")
     with tab_q:
         if os.path.exists("quinte_resume.csv") and os.path.exists("historique_quinte.csv"):
             r = pd.read_csv("quinte_resume.csv").iloc[0]
