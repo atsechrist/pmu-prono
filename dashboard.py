@@ -28,38 +28,82 @@ def verifier_acces():
     if st.session_state.get("acces_ok"):
         return
 
-    # --- Hero ---
-    st.markdown(
-        "<div style='text-align:center; padding: 8px 0 0 0;'>"
-        "<h1 style='font-size:3em; margin-bottom:0;'>🐎 PMU Prono</h1>"
-        "<p style='font-size:1.2em; color:#8a8a8a; margin-top:6px;'>"
-        "Pronostics hippiques par Intelligence Artificielle<br>"
-        "13 ans de données &nbsp;·&nbsp; backtest honnête &nbsp;·&nbsp; courses françaises</p>"
-        "</div>", unsafe_allow_html=True)
-    st.divider()
+    MIX_C, PLACE_C, GAG_C, QUINTE_C = "#8b5cf6", "#22c55e", "#f97316", "#eab308"
+
+    # --- HERO (bandeau dégradé) ---
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,{MIX_C} 0%,#3b82f6 50%,{PLACE_C} 100%);
+                border-radius:18px; padding:34px 20px; text-align:center; color:white;
+                box-shadow:0 6px 24px rgba(0,0,0,.18); margin-bottom:6px;">
+      <div style="font-size:3.4em; line-height:1;">🐎</div>
+      <div style="font-size:2.6em; font-weight:800; letter-spacing:.5px;">PMU Prono</div>
+      <div style="font-size:1.2em; opacity:.97; margin-top:8px;">
+        Pronostics hippiques par Intelligence Artificielle</div>
+      <div style="font-size:.95em; opacity:.85; margin-top:6px;">
+        13 ans de données &nbsp;•&nbsp; backtest honnête &nbsp;•&nbsp; courses françaises 🇫🇷</div>
+    </div>""", unsafe_allow_html=True)
+
+    # --- Chiffres clés (bandeau) ---
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Données", "13 ans")
+    k2.metric("Partants analysés", "2,7 M")
+    k3.metric("Backtest honnête", "2021-26")
+    k4.metric("Courses", "🇫🇷 France")
 
     st.subheader("🎯 Le principe")
     st.write(
         "Un modèle d'IA entraîné sur **13 ans de courses françaises** (2013-2026, "
         "**2,7 millions de partants**) analyse chaque jour la *musique*, les cotes, la forme "
-        "et les gains de chaque cheval pour désigner les paris les plus fiables. "
-        "Toutes les stratégies sont **validées honnêtement** : le modèle apprend sur "
-        "2013-2020 et n'est jugé que sur **2021-2026 — des courses qu'il n'a jamais vues** "
-        "(donc des résultats réalistes, pas gonflés).")
+        "et les gains de chaque cheval. Toutes les stratégies sont **validées honnêtement** : "
+        "le modèle apprend sur 2013-2020 et n'est jugé que sur **2021-2026 — des courses qu'il "
+        "n'a jamais vues** (résultats réalistes, pas gonflés).")
 
-    st.subheader("📊 Les 4 stratégies")
+    # --- CARTES stratégies (colorées) ---
+    st.subheader("📊 Les stratégies en un coup d'œil")
     cartes = [
-        ("🎲 MIX", "Placé Fort + Gagnant Moyen", "+13 045 €", "Bénéfice max"),
-        ("⭐ Placé", "Le cheval le plus sûr (top 3)", "71%", "Placés — le + sûr"),
-        ("🏆 Gagnant", "Le cheval qui gagne", "Risqué", "Vise la victoire"),
-        ("🎰 Quinté+", "Les 5 premiers", "Loterie", "Le jackpot"),
+        (MIX_C, "🎲 MIX", "Placé Fort + Gagnant Moyen", "+13 045 €",
+         [("99 615", "paris"), ("47,7%", "réussite"), ("+13,1%", "ROI")]),
+        (PLACE_C, "⭐ Placé Fort", "Le cheval le plus sûr (top 3)", "+5 703 €",
+         [("45 502", "paris"), ("71,5%", "placés"), ("+12,5%", "ROI")]),
+        (GAG_C, "🏆 Gagnant Moyen", "L'outsider qui gagne", "+7 341 €",
+         [("54 113", "paris"), ("27,6%", "victoires"), ("+13,6%", "ROI")]),
+        (QUINTE_C, "🎰 Quinté+", "Les 5 premiers", "Loterie",
+         [("base 7", "→ 26% des 5"), ("jackpot", "possible"), ("perte", "long terme")]),
     ]
-    for col, (titre, desc, stat, tag) in zip(st.columns(4), cartes):
-        with col, st.container(border=True):
-            st.markdown(f"**{titre}**")
-            st.caption(desc)
-            st.markdown(f"### {stat}")
-            st.caption(tag)
+    cards_html = '<div style="display:flex; gap:14px; flex-wrap:wrap;">'
+    for color, titre, sub, big, stats in cartes:
+        lignes = "".join(
+            f'<div style="display:flex; justify-content:space-between; padding:3px 0; '
+            f'border-top:1px solid rgba(130,130,130,.2); font-size:.92em;">'
+            f'<span style="font-weight:700;">{v}</span><span style="opacity:.7;">{lab}</span></div>'
+            for v, lab in stats)
+        cards_html += f"""
+        <div style="flex:1; min-width:210px; padding:16px 18px; border-radius:14px;
+                    background:rgba(130,130,130,.08); border-top:5px solid {color};
+                    box-shadow:0 2px 10px rgba(0,0,0,.10);">
+          <div style="font-size:1.15em; font-weight:800; color:{color};">{titre}</div>
+          <div style="font-size:.85em; opacity:.7; margin:3px 0 12px;">{sub}</div>
+          <div style="font-size:1.7em; font-weight:800; color:{color}; margin-bottom:8px;">{big}</div>
+          {lignes}
+        </div>"""
+    cards_html += "</div>"
+    st.markdown(cards_html, unsafe_allow_html=True)
+    st.caption("💡 Bénéfice = mise 1€/pari, sur 2021-2026. 🎲 MIX = le plus rentable · "
+               "⭐ Placé = le plus régulier (peu de séries perdantes).")
+
+    # --- Tableau comparatif complet ---
+    with st.expander("📋 Voir tous les chiffres (comparatif détaillé)"):
+        comp = pd.DataFrame([
+            ["🎲 MIX",            "99 615", "47,7% (mixte)",  "+13,1%", "+13 045 €", "16 pertes d'affilée · pire creux −105 €"],
+            ["⭐ Placé Fort",     "45 502", "71,5% placés",   "+12,5%", "+5 703 €",  "Faible — le plus régulier"],
+            ["🟡 Placé Moyen",    "25 088", "51,9% placés",   "+12,1%", "+3 027 €",  "Moyen"],
+            ["🏆 Gagnant Fort",   "16 477", "48,5% victoires","+10,7%", "+1 770 €",  "Élevé"],
+            ["🟠 Gagnant Moyen",  "54 113", "27,6% victoires","+13,6%", "+7 341 €",  "Très élevé (gros coups rares)"],
+            ["🎰 Quinté+",        "—",      "base 7 → 26% des 5", "—",  "perte L.T.","Extrême (loterie)"],
+        ], columns=["Stratégie", "Paris", "Réussite", "ROI", "Bénéfice", "Risque"])
+        st.dataframe(comp, use_container_width=True, hide_index=True)
+        st.caption("Mesuré sur 2021-2026 (courses FR jamais vues à l'entraînement). "
+                   "Les ROI restent des **plafonds optimistes** — en réel, ta mise réduit le rapport.")
 
     st.subheader("🛠️ Ce que l'application te donne")
     st.markdown(
