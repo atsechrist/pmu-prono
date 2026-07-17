@@ -141,11 +141,9 @@ def bloc_reussite(titre, sous_ensemble):
         c3.metric("Réussite (placés)", "—")
         c4.metric("Bénéfice (1€/pari)", "—")
 
-col_f, col_m = st.columns(2)
-with col_f:
-    bloc_reussite("🟢 FORT (proba ≥ 60%)", top[top["proba_place"] >= 0.6])
-with col_m:
-    bloc_reussite("🟡 Moyen (proba < 60%)", top[top["proba_place"] < 0.6])
+bloc_reussite("💎 SUPER FORT (proba ≥ 90%)", top[top["proba_place"] >= 0.9])
+bloc_reussite("🟢 FORT (proba 60–90%)", top[(top["proba_place"] >= 0.6) & (top["proba_place"] < 0.9)])
+bloc_reussite("🟡 Moyen (proba < 60%)", top[top["proba_place"] < 0.6])
 
 top["Heure GMT"] = top["heure"].apply(heure_gmt)
 
@@ -160,12 +158,20 @@ def format_table(sous_ensemble):
     v["Proba placé"] = (v["Proba placé"] * 100).round(0).astype(int).astype(str) + "%"
     return v
 
-fort = top[top["proba_place"] >= 0.6]
+super_ = top[top["proba_place"] >= 0.9]
+fort = top[(top["proba_place"] >= 0.6) & (top["proba_place"] < 0.9)]
 moyen = top[top["proba_place"] < 0.6]
+a_jouer = top[top["proba_place"] >= 0.6]
 
-# ═══ LA LISTE À JOUER : Placé FORT, isolé ═══
-st.subheader(f"🎯 À JOUER — {len(fort)} paris Placé FORT")
-st.caption(f"Ta stratégie : jouer ces chevaux au **placé**. Ordre : **{tri_placé}** (idem PDF).")
+# ═══ LA LISTE À JOUER : Placé (Super Fort + Fort), isolé ═══
+st.subheader(f"🎯 À JOUER — {len(a_jouer)} paris Placé")
+st.caption(f"Ordre : **{tri_placé}** (idem PDF). 💎 SUPER FORT = les plus sûrs (~93% de placés, "
+           "mais petits gains) ; 🟢 FORT = meilleur compromis.")
+if len(super_):
+    st.markdown(f"**💎 SUPER FORT — {len(super_)} paris**")
+    st.dataframe(format_table(super_), use_container_width=True, hide_index=True,
+                 height=min(300, 60 + 35 * len(super_)))
+st.markdown(f"**🟢 FORT — {len(fort)} paris**")
 st.dataframe(format_table(fort), use_container_width=True, hide_index=True,
              height=min(700, 60 + 35 * len(fort)))
 
@@ -334,39 +340,39 @@ st.warning("⚠️ Les ROI positifs viennent en partie d'effets structurels du m
            "(favoris sous-paries au placé). En pariant pour de vrai, ta mise fait BAISSER le "
            "rapport → rendement reel plus bas. A voir comme un plafond optimiste, pas une promesse.")
 
-def afficher_perf(hist, strat, label_succes, txt_fort, txt_moyen):
+NIVEAUX = {"SUPER": "💎 SUPER FORT (proba ≥ 90%)",
+           "FORT": "🟢 FORT", "Moyen": "🟡 Moyen"}
+ORDRE_NIV = ["SUPER", "FORT", "Moyen"]
+
+def afficher_perf(hist, strat, label_succes):
     h = hist[hist["strategie"] == strat]
     if h.empty:
         st.caption("Pas de donnees.")
         return
+    niveaux = [n for n in ORDRE_NIV if n in set(h["confiance"])]
 
-    def bloc(titre, hh):
-        st.markdown(f"**{titre}**")
-        if not len(hh):
-            st.caption("Aucun pari.")
-            return
+    for niv in niveaux:
+        hh = h[h["confiance"] == niv]
+        st.markdown(f"**{NIVEAUX[niv]}**")
         p = int(hh["paris"].sum())
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Paris (total)", f"{p:,}".replace(",", " "))
         m2.metric(label_succes, f"{hh['succes'].sum()/p:.1%}")
         m3.metric("ROI global", f"{hh['profit'].sum()/p:+.1%}")
         m4.metric("Bénéfice (1€/pari)", f"{hh['profit'].sum():+,.0f} €".replace(",", " "))
+        st.write("")
 
-    bloc(f"🟢 FORT ({txt_fort})", h[h["confiance"] == "FORT"])
-    st.write("")
-    bloc(f"🟡 Moyen ({txt_moyen})", h[h["confiance"] == "Moyen"])
     piv = (h.pivot_table(index="date", columns="confiance", values="profit", aggfunc="sum")
              .fillna(0).sort_index().cumsum())
+    piv = piv[[n for n in ORDRE_NIV if n in piv.columns]]
     piv.columns = [f"{c} (€)" for c in piv.columns]
     st.caption("Gains cumulés (mise 1€/pari depuis 2021) :")
     st.line_chart(piv, height=260)
 
-    # --- Récap MENSUEL par niveau (FORT et Moyen) pour suivre la bankroll ---
-    def table_mensuelle(niveau, titre):
-        sub = h[h["confiance"] == niveau].copy()
-        if sub.empty:
-            return
-        st.markdown(f"**📅 Récap par mois — {titre}** (mise 1€/pari) :")
+    # --- Récap MENSUEL par niveau pour suivre la bankroll ---
+    for niv in niveaux:
+        sub = h[h["confiance"] == niv].copy()
+        st.markdown(f"**📅 Récap par mois — {NIVEAUX[niv]}** (mise 1€/pari) :")
         sub["Mois"] = sub["date"].dt.to_period("M").astype(str)
         pm = sub.groupby("Mois").agg(paris=("paris", "sum"), succes=("succes", "sum"),
                                      profit=("profit", "sum")).reset_index()
@@ -378,9 +384,6 @@ def afficher_perf(hist, strat, label_succes, txt_fort, txt_moyen):
         vue = pm[["Mois", "Paris", label_succes, "Bénéfice (€)", "Bankroll (€)", "ROI"]]
         st.dataframe(vue, use_container_width=True, hide_index=True, height=min(500, 60 + 35 * len(vue)))
 
-    table_mensuelle("FORT", "🟢 FORT")
-    table_mensuelle("Moyen", "🟡 Moyen")
-
 if not os.path.exists("historique_perf.csv"):
     st.info("Historique pas encore genere. Lance `python historique.py` une fois pour le creer.")
 else:
@@ -388,10 +391,12 @@ else:
     hist["date"] = pd.to_datetime(hist["date"])
     tab_p, tab_g, tab_q = st.tabs(["⭐ Placé", "🏆 Gagnant", "🎰 Quinté+"])
     with tab_p:
-        afficher_perf(hist, "PLACE", "Taux de placé", "proba ≥ 60%", "proba < 60%")
+        st.caption("💎 SUPER FORT (≥90%) = ultra-sûr (~93% de placés) mais petits gains ; "
+                   "🟢 FORT (60-90%) = meilleur compromis.")
+        afficher_perf(hist, "PLACE", "Taux de placé")
     with tab_g:
         st.caption("Le Gagnant est plus variable : des mois entiers peuvent etre negatifs.")
-        afficher_perf(hist, "GAGNANT", "Taux de victoire", "proba ≥ 40%", "proba < 40%")
+        afficher_perf(hist, "GAGNANT", "Taux de victoire")
     with tab_q:
         if os.path.exists("quinte_resume.csv") and os.path.exists("historique_quinte.csv"):
             r = pd.read_csv("quinte_resume.csv").iloc[0]
