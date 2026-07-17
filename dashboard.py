@@ -75,8 +75,9 @@ def verifier_acces():
          "+5 703 €", [("71,5%", "placés"), ("+12,5%", "ROI"), ("45 502", "paris")]),
         ("linear-gradient(135deg,#ea580c,#f97316)", "🏆", "Gagnant Moyen", "L'outsider qui gagne",
          "+7 341 €", [("27,6%", "victoires"), ("+13,6%", "ROI"), ("54 113", "paris")]),
-        ("linear-gradient(135deg,#dc2626,#f43f5e)", "🎰", "Quinté+", "Les 5 premiers",
-         "Loterie", [("26%", "des 5 (base 7)"), ("jackpot", "possible"), ("perte", "long terme")]),
+        ("linear-gradient(135deg,#dc2626,#f43f5e)", "🎰", "Quinté+", "Les 5 premiers — base 7",
+         "Loterie", [("+10 346 €", "désordre"), ("+61 750 €", "ordre ×2"),
+                     ("≈ perte", "sinon")]),
     ]
     cards = ""
     for grad, icon, nom, sub, big, stats in cartes:
@@ -123,11 +124,13 @@ def verifier_acces():
             ["🟡 Placé Moyen",   "25 088", "51,9% placés",    "+12,1%", "+3 027 €",  "Moyen"],
             ["🏆 Gagnant Fort",  "16 477", "48,5% victoires", "+10,7%", "+1 770 €",  "Élevé"],
             ["🟠 Gagnant Moyen", "54 113", "27,6% victoires", "+13,6%", "+7 341 €",  "Très élevé (gros coups rares)"],
-            ["🎰 Quinté+",       "—",      "base 7 → 26% des 5", "—",   "perte L.T.","Extrême (loterie)"],
+            ["🎰 Quinté+",       "2 020",  "78 désordre · 2 ordre", "variance ++", "+10 346 € dés. · +61 750 € ordre", "Extrême — porté par 2 jackpots"],
         ], columns=["Stratégie", "Paris", "Réussite", "ROI", "Bénéfice", "Risque"])
         st.dataframe(comp, use_container_width=True, hide_index=True)
         st.caption("Mesuré sur 2021-2026 (courses FR jamais vues à l'entraînement). "
-                   "Les ROI restent des **plafonds optimistes** — en réel, ta mise réduit le rapport.")
+                   "Les ROI restent des **plafonds optimistes** — en réel, ta mise réduit le rapport. "
+                   "⚠️ Le **Quinté** est une loterie : ses +61 750 € viennent de **2 jackpots** "
+                   "(mai + déc 2021) ; sans eux, il est en perte. À ne pas comparer aux autres.")
 
     st.subheader("🛠️ Ce que l'application te donne")
     st.markdown(
