@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from pronos_jour import pronostics
-from export_pdf import selection_pdf, detail_mois_pdf
+from export_pdf import selection_pdf, detail_mois_pdf, mix_pdf
 
 st.set_page_config(page_title="PMU Prono", page_icon="🐎", layout="wide")
 
@@ -86,6 +86,74 @@ st.success(f"{df['course'].nunique()} courses - {len(df)} partants analyses  "
            f"·  {nb_finies} courses terminées  ·  chargé à {heure_charge}")
 st.caption("Les résultats se figent au chargement. Clique **🔄 Actualiser les résultats** "
            "pour récupérer les arrivées des courses courues depuis.")
+
+# ═══════════════════════════════════════════════════════════════
+#  SELECTION MIX du jour (EN PREMIER — Placé Fort + Gagnant Moyen)
+# ═══════════════════════════════════════════════════════════════
+st.header("🎲 Sélection MIX du jour")
+st.caption("Placé FORT (≥60%) joués au PLACÉ **+** Gagnant Moyen (<40%) joués au GAGNANT. "
+           "~2 paris/course. Plus gros bénéfice backtesté (+13 045€ sur 2021-26).")
+
+pf = df[(df["rang_place"] == 1) & (df["proba_place"] >= 0.6)].copy()
+pf["Pari"] = "PLACÉ"; pf["proba"] = pf["proba_place"]
+gm = df[(df["rang_gagnant"] == 1) & (df["proba_gagnant"] < 0.4)].copy()
+gm["Pari"] = "GAGNANT"; gm["proba"] = gm["proba_gagnant"]
+mix = pd.concat([pf, gm], ignore_index=True)
+
+def _mix_ok(row):
+    if pd.isna(row["position"]):
+        return False
+    return (row["Pari"] == "PLACÉ" and row["position"] <= 3) or \
+           (row["Pari"] == "GAGNANT" and row["position"] == 1)
+
+def _mix_res(row):
+    if not row["course_finie"]:
+        return "⏳ à venir"
+    pos = row["position"]
+    if pd.isna(pos):
+        return "❌"
+    return f"{int(pos)}e {'✅' if _mix_ok(row) else '❌'}"
+
+def _mix_gain(row):
+    if not _mix_ok(row):
+        return 0.0
+    r = row["rapport_place"] if row["Pari"] == "PLACÉ" else row["rapport_gagnant"]
+    return r if pd.notna(r) else 0.0
+
+if len(mix):
+    mix["Heure GMT"] = mix["heure"].apply(heure_gmt)
+    mix["Résultat"] = mix.apply(_mix_res, axis=1)
+    mix = mix.sort_values("heure", na_position="last")
+
+    couru = mix[mix["course_finie"]].copy()
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Paris MIX du jour", len(mix))
+    c2.metric("Déjà courus", len(couru))
+    if len(couru):
+        couru["ok"] = couru.apply(_mix_ok, axis=1)
+        couru["g"] = couru.apply(_mix_gain, axis=1)
+        profit = couru["g"].sum() - len(couru)
+        c3.metric("Réussite", f"{couru['ok'].mean():.0%}", f"{int(couru['ok'].sum())}/{len(couru)}")
+        c4.metric("Bénéfice (1€/pari)", f"{profit:+.1f} €", f"ROI {profit/len(couru):+.0%}")
+    else:
+        c3.metric("Réussite", "—")
+        c4.metric("Bénéfice (1€/pari)", "—")
+
+    vue_mix = mix[["course", "Heure GMT", "hippodrome", "num_pmu", "nom", "Pari",
+                   "proba", "cote_reference", "Résultat"]].copy()
+    vue_mix.columns = ["Course", "Heure GMT", "Hippodrome", "N°", "Cheval", "Pari",
+                       "Proba", "Cote matin", "Résultat"]
+    vue_mix["Proba"] = (vue_mix["Proba"] * 100).round(0).astype(int).astype(str) + "%"
+    st.caption("Trié par heure. Colonne **Pari** = jouer au PLACÉ ou au GAGNANT selon la ligne.")
+    st.dataframe(vue_mix, use_container_width=True, hide_index=True,
+                 height=min(700, 60 + 35 * len(vue_mix)))
+    st.download_button(
+        "📄 Télécharger MES paris MIX (PDF)",
+        data=mix_pdf(jour.isoformat(), mix.rename(columns={"num_pmu": "num", "Pari": "pari"})),
+        file_name=f"selection_mix_{jour.isoformat()}.pdf",
+        mime="application/pdf", key="dl_mix")
+else:
+    st.info("Aucun pari MIX pour cette date.")
 
 # ═══════════════════════════════════════════════════════════════
 #  SELECTION DU JOUR — les pronos Placé les plus surs
@@ -239,73 +307,6 @@ st.dataframe(vueg, use_container_width=True, hide_index=True, height=min(600, 60
 
 st.warning("⚠️ Le Gagnant est plus risqué et plus variable que le Placé (on perd souvent). "
            "A jouer avec parcimonie. Le ROI backteste reste un plafond optimiste, pas une promesse.")
-
-# ═══════════════════════════════════════════════════════════════
-#  SELECTION MIX du jour (Placé Fort + Gagnant Moyen)
-# ═══════════════════════════════════════════════════════════════
-st.header("🎲 Sélection MIX du jour")
-st.caption("Placé FORT (≥60%) joués au PLACÉ **+** Gagnant Moyen (<40%) joués au GAGNANT. "
-           "~2 paris/course. Plus gros bénéfice backtesté (+13 045€ sur 2021-26), mais plus de volume.")
-
-pf = df[(df["rang_place"] == 1) & (df["proba_place"] >= 0.6)].copy()
-pf["Pari"] = "PLACÉ"
-pf["proba"] = pf["proba_place"]
-gm = df[(df["rang_gagnant"] == 1) & (df["proba_gagnant"] < 0.4)].copy()
-gm["Pari"] = "GAGNANT"
-gm["proba"] = gm["proba_gagnant"]
-mix = pd.concat([pf, gm], ignore_index=True)
-
-def _mix_ok(row):
-    if pd.isna(row["position"]):
-        return False
-    return (row["Pari"] == "PLACÉ" and row["position"] <= 3) or \
-           (row["Pari"] == "GAGNANT" and row["position"] == 1)
-
-def _mix_res(row):
-    if not row["course_finie"]:
-        return "⏳ à venir"
-    pos = row["position"]
-    if pd.isna(pos):
-        return "❌"
-    ok = _mix_ok(row)
-    verdict = "✅" if ok else "❌"
-    return f"{int(pos)}e {verdict}"
-
-def _mix_gain(row):
-    if not _mix_ok(row):
-        return 0.0
-    r = row["rapport_place"] if row["Pari"] == "PLACÉ" else row["rapport_gagnant"]
-    return r if pd.notna(r) else 0.0
-
-if len(mix):
-    mix["Heure GMT"] = mix["heure"].apply(heure_gmt)
-    mix["Résultat"] = mix.apply(_mix_res, axis=1)
-    mix = mix.sort_values("heure", na_position="last")
-
-    couru = mix[mix["course_finie"]].copy()
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Paris MIX du jour", len(mix))
-    c2.metric("Déjà courus", len(couru))
-    if len(couru):
-        couru["ok"] = couru.apply(_mix_ok, axis=1)
-        couru["g"] = couru.apply(_mix_gain, axis=1)
-        profit = couru["g"].sum() - len(couru)
-        c3.metric("Réussite", f"{couru['ok'].mean():.0%}", f"{int(couru['ok'].sum())}/{len(couru)}")
-        c4.metric("Bénéfice (1€/pari)", f"{profit:+.1f} €", f"ROI {profit/len(couru):+.0%}")
-    else:
-        c3.metric("Réussite", "—")
-        c4.metric("Bénéfice (1€/pari)", "—")
-
-    vue_mix = mix[["course", "Heure GMT", "hippodrome", "num_pmu", "nom", "Pari",
-                   "proba", "cote_reference", "Résultat"]].copy()
-    vue_mix.columns = ["Course", "Heure GMT", "Hippodrome", "N°", "Cheval", "Pari",
-                       "Proba", "Cote matin", "Résultat"]
-    vue_mix["Proba"] = (vue_mix["Proba"] * 100).round(0).astype(int).astype(str) + "%"
-    st.caption("Trié par heure. Colonne **Pari** = jouer au PLACÉ ou au GAGNANT selon la ligne.")
-    st.dataframe(vue_mix, use_container_width=True, hide_index=True,
-                 height=min(700, 60 + 35 * len(vue_mix)))
-else:
-    st.info("Aucun pari MIX pour cette date.")
 
 # ═══════════════════════════════════════════════════════════════
 #  QUINTE+ du jour

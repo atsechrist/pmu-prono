@@ -20,6 +20,64 @@ def _heure_gmt(ms):
         return ""
 
 
+def mix_pdf(jour_iso: str, dfm) -> bytes:
+    """PDF de la selection MIX du jour (Placé Fort + Gagnant Moyen), trie par heure.
+    dfm : colonnes course, heure, hippodrome, num, nom, pari, proba, cote_reference,
+    position, course_finie."""
+    dfm = dfm.sort_values("heure", na_position="last")
+    pdf = FPDF(orientation="L", unit="mm", format="A4")
+    pdf.add_page()
+
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.cell(0, 9, _txt(f"Selection MIX du jour - {jour_iso}"), ln=1)
+    nb_p = int((dfm["pari"] == "PLACÉ").sum())
+    nb_g = int((dfm["pari"] == "GAGNANT").sum())
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(90, 90, 90)
+    pdf.cell(0, 6, _txt(f"{len(dfm)} paris  ({nb_p} au PLACE + {nb_g} au GAGNANT)  -  trie par heure"), ln=1)
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(2)
+
+    cols = [("Course", 18), ("Heure", 14), ("Hippodrome", 44), ("N", 8), ("Cheval", 55),
+            ("Pari", 20), ("Proba", 14), ("Cote", 14), ("Resultat", 30)]
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(230, 230, 230)
+    for titre, w in cols:
+        pdf.cell(w, 7, _txt(titre), border=1, fill=True, align="C")
+    pdf.ln()
+
+    pdf.set_font("Helvetica", "", 8)
+    for _, r in dfm.iterrows():
+        pari = "PLACE" if r["pari"] == "PLACÉ" else "GAGNANT"
+        pos = r["position"]
+        if not r["course_finie"]:
+            res = "a venir"
+        elif pos is None or (isinstance(pos, float) and pos != pos):
+            res = "non classe"
+        else:
+            pos = int(pos)
+            ok = (r["pari"] == "PLACÉ" and pos <= 3) or (r["pari"] == "GAGNANT" and pos == 1)
+            res = f"{pos}e - {'GAGNE' if ok else 'rate'}"
+        cote = r.get("cote_reference")
+        cote = "" if cote is None or (isinstance(cote, float) and cote != cote) else f"{cote:.1f}"
+        cells = [
+            (str(r["course"]), 18), (_heure_gmt(r["heure"]), 14),
+            (str(r["hippodrome"])[:27], 44), (str(int(r["num"])), 8),
+            (str(r["nom"])[:34], 55), (pari, 20),
+            (f"{r['proba']*100:.0f}%", 14), (cote, 14), (res, 30),
+        ]
+        for val, w in cells:
+            pdf.cell(w, 5.5, _txt(val), border=1)
+        pdf.ln()
+
+    pdf.ln(3)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(120, 120, 120)
+    pdf.multi_cell(0, 4, _txt("Rappel : jeu d'argent = risque. Joue de facon responsable, "
+                              "avec de l'argent que tu peux te permettre de perdre."))
+    return bytes(pdf.output())
+
+
 def detail_mois_pdf(mois: str, dfm) -> bytes:
     """PDF du detail des paris Placé FORT d'un mois, trie par date puis heure.
     dfm : colonnes date, heure_depart, course, hippodrome, num, nom, proba, place, rapport_place, gain."""
