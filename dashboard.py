@@ -24,17 +24,67 @@ def _mot_de_passe_attendu():
 
 
 def verifier_acces():
-    """Affiche une porte de connexion tant que le bon mot de passe n'est pas saisi."""
+    """Page d'accueil + porte mot de passe (tant que le bon code n'est pas saisi)."""
     if st.session_state.get("acces_ok"):
         return
-    st.title("🔒 PMU Prono")
-    saisie = st.text_input("Mot de passe", type="password")
-    if saisie:
-        if saisie == _mot_de_passe_attendu():
-            st.session_state["acces_ok"] = True
-            st.rerun()
-        else:
-            st.error("Mot de passe incorrect.")
+
+    # --- Hero ---
+    st.markdown(
+        "<div style='text-align:center; padding: 8px 0 0 0;'>"
+        "<h1 style='font-size:3em; margin-bottom:0;'>🐎 PMU Prono</h1>"
+        "<p style='font-size:1.2em; color:#8a8a8a; margin-top:6px;'>"
+        "Pronostics hippiques par Intelligence Artificielle<br>"
+        "13 ans de données &nbsp;·&nbsp; backtest honnête &nbsp;·&nbsp; courses françaises</p>"
+        "</div>", unsafe_allow_html=True)
+    st.divider()
+
+    st.subheader("🎯 Le principe")
+    st.write(
+        "Un modèle d'IA entraîné sur **13 ans de courses françaises** (2013-2026, "
+        "**2,7 millions de partants**) analyse chaque jour la *musique*, les cotes, la forme "
+        "et les gains de chaque cheval pour désigner les paris les plus fiables. "
+        "Toutes les stratégies sont **validées honnêtement** : le modèle apprend sur "
+        "2013-2020 et n'est jugé que sur **2021-2026 — des courses qu'il n'a jamais vues** "
+        "(donc des résultats réalistes, pas gonflés).")
+
+    st.subheader("📊 Les 4 stratégies")
+    cartes = [
+        ("🎲 MIX", "Placé Fort + Gagnant Moyen", "+13 045 €", "Bénéfice max"),
+        ("⭐ Placé", "Le cheval le plus sûr (top 3)", "71%", "Placés — le + sûr"),
+        ("🏆 Gagnant", "Le cheval qui gagne", "Risqué", "Vise la victoire"),
+        ("🎰 Quinté+", "Les 5 premiers", "Loterie", "Le jackpot"),
+    ]
+    for col, (titre, desc, stat, tag) in zip(st.columns(4), cartes):
+        with col, st.container(border=True):
+            st.markdown(f"**{titre}**")
+            st.caption(desc)
+            st.markdown(f"### {stat}")
+            st.caption(tag)
+
+    st.subheader("🛠️ Ce que l'application te donne")
+    st.markdown(
+        "- **La sélection du jour** : les chevaux à jouer, triés par heure de course\n"
+        "- **Les résultats en direct** au fil des arrivées (✅/❌) + ton bénéfice du jour\n"
+        "- **L'historique complet** : courbe de gains, récap mensuel, suivi de bankroll\n"
+        "- **Export PDF** de tes paris du jour et du détail de chaque mois")
+
+    st.divider()
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        st.markdown("### 🔒 Accès à l'application")
+        saisie = st.text_input("Mot de passe", type="password",
+                               placeholder="Entre ton mot de passe…")
+        if saisie:
+            if saisie == _mot_de_passe_attendu():
+                st.session_state["acces_ok"] = True
+                st.rerun()
+            else:
+                st.error("Mot de passe incorrect.")
+
+    st.divider()
+    st.caption("⚠️ Jeu d'argent = risque. Les rendements affichés sont des **backtests** "
+               "(plafonds optimistes), pas des garanties. Joue de façon responsable, avec de "
+               "l'argent que tu peux te permettre de perdre. Réservé aux 18 ans et plus.")
     st.stop()
 
 
