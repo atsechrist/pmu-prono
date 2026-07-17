@@ -16,3 +16,22 @@ dc_out.txt
 
 # Secrets (mot de passe eventuel)
 .streamlit/secrets.toml
+
+# Outils et scripts LOCAUX (non necessaires pour l'app en ligne)
+*.bat
+maj.py
+historique.py
+entrainer_modeles.py
+scraper.py
+scraper_rapports.py
+scraper_quinte.py
+statut.py
+statut_rapports.py
+train.py
+backtest_*.py
+diag_*.py
+quick_*.py
+quinte_analyse.py
+features_modele.json
+*_out.txt
+*.pdf
