@@ -28,27 +28,35 @@ def verifier_acces():
     if st.session_state.get("acces_ok"):
         return
 
-    MIX_C, PLACE_C, GAG_C, QUINTE_C = "#8b5cf6", "#22c55e", "#f97316", "#eab308"
+    import streamlit.components.v1 as components
 
-    # --- HERO (bandeau dégradé) ---
-    st.markdown(f"""
-    <div style="background:linear-gradient(135deg,{MIX_C} 0%,#3b82f6 50%,{PLACE_C} 100%);
-                border-radius:18px; padding:34px 20px; text-align:center; color:white;
-                box-shadow:0 6px 24px rgba(0,0,0,.18); margin-bottom:6px;">
-      <div style="font-size:3.4em; line-height:1;">🐎</div>
-      <div style="font-size:2.6em; font-weight:800; letter-spacing:.5px;">PMU Prono</div>
-      <div style="font-size:1.2em; opacity:.97; margin-top:8px;">
-        Pronostics hippiques par Intelligence Artificielle</div>
-      <div style="font-size:.95em; opacity:.85; margin-top:6px;">
-        13 ans de données &nbsp;•&nbsp; backtest honnête &nbsp;•&nbsp; courses françaises 🇫🇷</div>
-    </div>""", unsafe_allow_html=True)
-
-    # --- Chiffres clés (bandeau) ---
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Données", "13 ans")
-    k2.metric("Partants analysés", "2,7 M")
-    k3.metric("Backtest honnête", "2021-26")
-    k4.metric("Courses", "🇫🇷 France")
+    # ============ HERO (rendu HTML fidele via iframe) ============
+    hero = """
+    <style>
+      body{margin:0; background:transparent;
+           font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}
+      .hero{background:linear-gradient(135deg,#7c3aed 0%,#2563eb 52%,#059669 100%);
+            border-radius:20px; padding:36px 22px; text-align:center; color:#fff;
+            box-shadow:0 14px 40px rgba(37,99,235,.35);}
+      .horse{font-size:56px; line-height:1;}
+      .title{font-size:44px; font-weight:800; letter-spacing:.5px; margin-top:2px;}
+      .sub{font-size:18px; font-weight:500; opacity:.96; margin-top:8px;}
+      .pills{display:flex; gap:9px; flex-wrap:wrap; justify-content:center; margin-top:16px;}
+      .pill{background:rgba(255,255,255,.20); padding:6px 14px; border-radius:22px;
+            font-size:13.5px; font-weight:600; backdrop-filter:blur(4px);}
+    </style>
+    <div class="hero">
+      <div class="horse">🐎</div>
+      <div class="title">PMU Prono</div>
+      <div class="sub">Pronostics hippiques par Intelligence Artificielle</div>
+      <div class="pills">
+        <span class="pill">📅 13 ans de données</span>
+        <span class="pill">🔬 backtest honnête</span>
+        <span class="pill">🐎 2,7 M de partants</span>
+        <span class="pill">🇫🇷 courses françaises</span>
+      </div>
+    </div>"""
+    components.html(hero, height=260)
 
     st.subheader("🎯 Le principe")
     st.write(
@@ -58,48 +66,64 @@ def verifier_acces():
         "le modèle apprend sur 2013-2020 et n'est jugé que sur **2021-2026 — des courses qu'il "
         "n'a jamais vues** (résultats réalistes, pas gonflés).")
 
-    # --- CARTES stratégies (colorées) ---
-    st.subheader("📊 Les stratégies en un coup d'œil")
+    # ============ CARTES stratégies (gradient, rendu fidele, responsive) ============
+    st.subheader("📊 Les stratégies en chiffres")
     cartes = [
-        (MIX_C, "🎲 MIX", "Placé Fort + Gagnant Moyen", "+13 045 €",
-         [("99 615", "paris"), ("47,7%", "réussite"), ("+13,1%", "ROI")]),
-        (PLACE_C, "⭐ Placé Fort", "Le cheval le plus sûr (top 3)", "+5 703 €",
-         [("45 502", "paris"), ("71,5%", "placés"), ("+12,5%", "ROI")]),
-        (GAG_C, "🏆 Gagnant Moyen", "L'outsider qui gagne", "+7 341 €",
-         [("54 113", "paris"), ("27,6%", "victoires"), ("+13,6%", "ROI")]),
-        (QUINTE_C, "🎰 Quinté+", "Les 5 premiers", "Loterie",
-         [("base 7", "→ 26% des 5"), ("jackpot", "possible"), ("perte", "long terme")]),
+        ("linear-gradient(135deg,#7c3aed,#a855f7)", "🎲", "MIX", "Placé Fort + Gagnant Moyen",
+         "+13 045 €", [("47,7%", "réussite"), ("+13,1%", "ROI"), ("99 615", "paris")]),
+        ("linear-gradient(135deg,#059669,#10b981)", "⭐", "Placé Fort", "Le + sûr — top 3",
+         "+5 703 €", [("71,5%", "placés"), ("+12,5%", "ROI"), ("45 502", "paris")]),
+        ("linear-gradient(135deg,#ea580c,#f97316)", "🏆", "Gagnant Moyen", "L'outsider qui gagne",
+         "+7 341 €", [("27,6%", "victoires"), ("+13,6%", "ROI"), ("54 113", "paris")]),
+        ("linear-gradient(135deg,#dc2626,#f43f5e)", "🎰", "Quinté+", "Les 5 premiers",
+         "Loterie", [("26%", "des 5 (base 7)"), ("jackpot", "possible"), ("perte", "long terme")]),
     ]
-    cards_html = '<div style="display:flex; gap:14px; flex-wrap:wrap;">'
-    for color, titre, sub, big, stats in cartes:
-        lignes = "".join(
-            f'<div style="display:flex; justify-content:space-between; padding:3px 0; '
-            f'border-top:1px solid rgba(130,130,130,.2); font-size:.92em;">'
-            f'<span style="font-weight:700;">{v}</span><span style="opacity:.7;">{lab}</span></div>'
-            for v, lab in stats)
-        cards_html += f"""
-        <div style="flex:1; min-width:210px; padding:16px 18px; border-radius:14px;
-                    background:rgba(130,130,130,.08); border-top:5px solid {color};
-                    box-shadow:0 2px 10px rgba(0,0,0,.10);">
-          <div style="font-size:1.15em; font-weight:800; color:{color};">{titre}</div>
-          <div style="font-size:.85em; opacity:.7; margin:3px 0 12px;">{sub}</div>
-          <div style="font-size:1.7em; font-weight:800; color:{color}; margin-bottom:8px;">{big}</div>
-          {lignes}
+    cards = ""
+    for grad, icon, nom, sub, big, stats in cartes:
+        rows = "".join(
+            f'<div class="row"><span class="v">{v}</span><span class="l">{l}</span></div>'
+            for v, l in stats)
+        cards += f"""
+        <div class="card" style="background:{grad};">
+          <div class="ic">{icon}</div>
+          <div class="nom">{nom}</div>
+          <div class="sub">{sub}</div>
+          <div class="big">{big}</div>
+          {rows}
         </div>"""
-    cards_html += "</div>"
-    st.markdown(cards_html, unsafe_allow_html=True)
-    st.caption("💡 Bénéfice = mise 1€/pari, sur 2021-2026. 🎲 MIX = le plus rentable · "
-               "⭐ Placé = le plus régulier (peu de séries perdantes).")
+    cards_html = f"""
+    <style>
+      *{{box-sizing:border-box;}}
+      body{{margin:0; background:transparent;
+           font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}}
+      .rail{{display:flex; gap:14px; overflow-x:auto; padding:2px 2px 12px;
+            scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch;}}
+      .rail::-webkit-scrollbar{{height:7px;}}
+      .rail::-webkit-scrollbar-thumb{{background:rgba(130,130,130,.45); border-radius:4px;}}
+      .card{{flex:1 0 165px; scroll-snap-align:start; border-radius:18px; padding:18px 16px;
+            color:#fff; box-shadow:0 10px 26px rgba(0,0,0,.18);}}
+      .ic{{font-size:30px; line-height:1;}}
+      .nom{{font-size:17px; font-weight:800; margin-top:6px;}}
+      .sub{{font-size:12px; opacity:.9; margin-top:2px; min-height:28px;}}
+      .big{{font-size:27px; font-weight:800; margin:10px 0 6px;}}
+      .row{{display:flex; justify-content:space-between; align-items:baseline;
+           border-top:1px solid rgba(255,255,255,.28); padding:6px 0;}}
+      .v{{font-size:14px; font-weight:800;}}
+      .l{{font-size:12px; opacity:.9;}}
+    </style>
+    <div class="rail">{cards}</div>"""
+    components.html(cards_html, height=285, scrolling=False)
+    st.caption("💰 Bénéfice = mise 1€/pari, sur 2021-2026 (sur mobile, glisse les cartes ↔). "
+               "**🎲 MIX** = le plus rentable · **⭐ Placé Fort** = le plus régulier.")
 
-    # --- Tableau comparatif complet ---
-    with st.expander("📋 Voir tous les chiffres (comparatif détaillé)"):
+    with st.expander("📋 Voir tous les chiffres (comparatif détaillé des 6 tranches)"):
         comp = pd.DataFrame([
-            ["🎲 MIX",            "99 615", "47,7% (mixte)",  "+13,1%", "+13 045 €", "16 pertes d'affilée · pire creux −105 €"],
-            ["⭐ Placé Fort",     "45 502", "71,5% placés",   "+12,5%", "+5 703 €",  "Faible — le plus régulier"],
-            ["🟡 Placé Moyen",    "25 088", "51,9% placés",   "+12,1%", "+3 027 €",  "Moyen"],
-            ["🏆 Gagnant Fort",   "16 477", "48,5% victoires","+10,7%", "+1 770 €",  "Élevé"],
-            ["🟠 Gagnant Moyen",  "54 113", "27,6% victoires","+13,6%", "+7 341 €",  "Très élevé (gros coups rares)"],
-            ["🎰 Quinté+",        "—",      "base 7 → 26% des 5", "—",  "perte L.T.","Extrême (loterie)"],
+            ["🎲 MIX",           "99 615", "47,7% (mixte)",   "+13,1%", "+13 045 €", "16 pertes d'affilée · creux −105 €"],
+            ["⭐ Placé Fort",    "45 502", "71,5% placés",    "+12,5%", "+5 703 €",  "Faible — le plus régulier"],
+            ["🟡 Placé Moyen",   "25 088", "51,9% placés",    "+12,1%", "+3 027 €",  "Moyen"],
+            ["🏆 Gagnant Fort",  "16 477", "48,5% victoires", "+10,7%", "+1 770 €",  "Élevé"],
+            ["🟠 Gagnant Moyen", "54 113", "27,6% victoires", "+13,6%", "+7 341 €",  "Très élevé (gros coups rares)"],
+            ["🎰 Quinté+",       "—",      "base 7 → 26% des 5", "—",   "perte L.T.","Extrême (loterie)"],
         ], columns=["Stratégie", "Paris", "Réussite", "ROI", "Bénéfice", "Risque"])
         st.dataframe(comp, use_container_width=True, hide_index=True)
         st.caption("Mesuré sur 2021-2026 (courses FR jamais vues à l'entraînement). "
