@@ -148,31 +148,39 @@ with col_m:
     bloc_reussite("🟡 Moyen (proba < 60%)", top[top["proba_place"] < 0.6])
 
 top["Heure GMT"] = top["heure"].apply(heure_gmt)
-vue = top[["course", "Heure GMT", "hippodrome", "num_pmu", "nom", "driver",
-           "proba_place", "cote_reference", "Confiance", "Résultat"]].copy()
-vue.columns = ["Course", "Heure GMT", "Hippodrome", "N°", "Cheval", "Driver/Jockey",
-               "Proba placé", "Cote matin", "Confiance", "Résultat"]
-vue["Proba placé"] = (vue["Proba placé"] * 100).round(0).astype(int).astype(str) + "%"
 
-st.caption(f"Ordre : **{tri_placé}**. Cet ordre est aussi celui du PDF ci-dessous. "
-           "(Cliquer un en-tête de colonne ne change QUE l'affichage, pas le PDF — "
-           "utilise le menu de tri au-dessus.)")
-st.dataframe(vue, use_container_width=True, hide_index=True,
-             height=min(600, 60 + 35 * len(vue)))
+COLS = ["course", "Heure GMT", "hippodrome", "num_pmu", "nom", "driver",
+        "proba_place", "cote_reference", "Résultat"]
+NOMS = ["Course", "Heure GMT", "Hippodrome", "N°", "Cheval", "Driver/Jockey",
+        "Proba placé", "Cote matin", "Résultat"]
 
-nb_fort = (top["proba_place"] >= 0.6).sum()
-st.info(f"💡 {nb_fort} pronostics **FORT** aujourd'hui. "
-        f"Conseil : ne jouer que les 🟢 FORT pour rester dans la strategie securite. "
-        f"La colonne **Résultat** se remplit au fur et a mesure des arrivees.")
+def format_table(sous_ensemble):
+    v = sous_ensemble[COLS].copy()
+    v.columns = NOMS
+    v["Proba placé"] = (v["Proba placé"] * 100).round(0).astype(int).astype(str) + "%"
+    return v
 
-# --- Telechargement PDF de la selection FORT du jour ---
+fort = top[top["proba_place"] >= 0.6]
+moyen = top[top["proba_place"] < 0.6]
+
+# ═══ LA LISTE À JOUER : Placé FORT, isolé ═══
+st.subheader(f"🎯 À JOUER — {len(fort)} paris Placé FORT")
+st.caption(f"Ta stratégie : jouer ces chevaux au **placé**. Ordre : **{tri_placé}** (idem PDF).")
+st.dataframe(format_table(fort), use_container_width=True, hide_index=True,
+             height=min(700, 60 + 35 * len(fort)))
+
 pdf_bytes = selection_pdf(jour.isoformat(), top)
 st.download_button(
-    "📄 Télécharger la sélection FORT en PDF",
+    "📄 Télécharger MES paris du jour (PDF)",
     data=pdf_bytes,
-    file_name=f"selection_pmu_{jour.isoformat()}.pdf",
+    file_name=f"paris_place_fort_{jour.isoformat()}.pdf",
     mime="application/pdf",
 )
+
+# Moyen : secondaire, replié (à ne PAS jouer)
+with st.expander(f"🟡 Voir aussi les {len(moyen)} pronos Moyen (indicatif — à ne pas jouer)"):
+    st.dataframe(format_table(moyen), use_container_width=True, hide_index=True,
+                 height=min(500, 60 + 35 * len(moyen)))
 
 # ═══════════════════════════════════════════════════════════════
 #  SELECTION GAGNANT du jour
