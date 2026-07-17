@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from pronos_jour import pronostics
-from export_pdf import selection_pdf
+from export_pdf import selection_pdf, detail_mois_pdf
 
 st.set_page_config(page_title="PMU Prono", page_icon="🐎", layout="wide")
 
@@ -385,6 +385,19 @@ else:
     tab_p, tab_g, tab_q = st.tabs(["⭐ Placé", "🏆 Gagnant", "🎰 Quinté+"])
     with tab_p:
         afficher_perf(hist, "PLACE", "Taux de placé")
+        # --- Telechargement du detail d'un mois (Placé FORT, par heure) ---
+        if os.path.exists("historique_detail.csv"):
+            det = pd.read_csv("historique_detail.csv")
+            st.markdown("**📄 Télécharger le détail d'un mois** (Placé FORT, trié par heure) :")
+            mois_dispo = sorted(det["mois"].astype(str).unique(), reverse=True)
+            m_sel = st.selectbox("Mois", mois_dispo, key="mois_detail_place")
+            dm = det[det["mois"].astype(str) == m_sel]
+            st.download_button(
+                f"📄 Détail {m_sel} en PDF ({len(dm)} paris)",
+                data=detail_mois_pdf(m_sel, dm),
+                file_name=f"detail_place_fort_{m_sel}.pdf",
+                mime="application/pdf",
+                key="dl_detail_place")
     with tab_g:
         st.caption("Le Gagnant est plus variable : des mois entiers peuvent etre negatifs.")
         afficher_perf(hist, "GAGNANT", "Taux de victoire")
