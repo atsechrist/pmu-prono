@@ -96,7 +96,7 @@ st.caption("Les chevaux que le modele juge les plus surs de finir dans les 3 (co
 
 tri_placé = st.selectbox(
     "Trier la sélection (s'applique aussi au PDF)",
-    ["Confiance du modèle", "Heure GMT (chronologique)", "Hippodrome"],
+    ["Heure GMT (chronologique)", "Confiance du modèle", "Hippodrome"],
     index=0, key="tri_place")
 
 def fmt_resultat(row):
