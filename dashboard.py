@@ -10,22 +10,14 @@ import streamlit as st
 
 from pronos_jour import pronostics
 from export_pdf import selection_pdf, detail_mois_pdf, mix_pdf
+import auth
 
 st.set_page_config(page_title="PMU Prono", page_icon="🐎", layout="wide")
 
 
-# ─── Porte d'entree : mot de passe ────────────────────────────
-def _mot_de_passe_attendu():
-    """Lit le mot de passe dans les secrets Streamlit ; sinon valeur par defaut (local)."""
-    try:
-        return st.secrets["password"]
-    except Exception:
-        return "pmu2026"   # defaut pour tester en local ; a changer dans les secrets en ligne
-
-
 def verifier_acces():
-    """Page d'accueil + porte mot de passe (tant que le bon code n'est pas saisi)."""
-    if st.session_state.get("acces_ok"):
+    """Page d'accueil + connexion (tant que l'utilisateur n'est pas connecté)."""
+    if auth.utilisateur_actuel():
         return
 
     import streamlit.components.v1 as components
@@ -143,14 +135,8 @@ def verifier_acces():
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         st.markdown("### 🔒 Accès à l'application")
-        saisie = st.text_input("Mot de passe", type="password",
-                               placeholder="Entre ton mot de passe…")
-        if saisie:
-            if saisie == _mot_de_passe_attendu():
-                st.session_state["acces_ok"] = True
-                st.rerun()
-            else:
-                st.error("Mot de passe incorrect.")
+        st.caption("Connecte-toi ou crée ton compte pour accéder à tes stratégies.")
+        auth.formulaire_auth()
 
     st.divider()
     st.caption("⚠️ Jeu d'argent = risque. Les rendements affichés sont des **backtests** "
@@ -160,6 +146,18 @@ def verifier_acces():
 
 
 verifier_acces()
+
+# --- Barre latérale : utilisateur connecté + ses stratégies + déconnexion ---
+with st.sidebar:
+    _u = auth.utilisateur_actuel()
+    if _u:
+        st.markdown(f"👤 **{_u['email']}**")
+        _libelles = {"place": "⭐ Placé", "gagnant": "🏆 Gagnant",
+                     "mix": "🎲 MIX", "quinte": "🎰 Quinté+"}
+        _mes = [_libelles.get(s, s) for s in auth.droits_actuels()]
+        st.caption("Tes stratégies : " + (", ".join(_mes) if _mes else "aucune"))
+        if st.button("Se déconnecter", use_container_width=True):
+            auth.deconnexion()
 
 st.title("🐎 PMU Prono — Pronostics du jour")
 st.caption("Modele entraine sur 13 ans de courses FRANCAISES. Strategie SECURITE : le Placé. "
