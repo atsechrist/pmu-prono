@@ -1,0 +1,33 @@
+name: Email MIX du jour
+
+# Envoie chaque matin la selection MIX du jour par email (PDF en piece jointe).
+# Tourne dans le cloud GitHub : pas besoin que ton PC soit allume.
+
+on:
+  schedule:
+    # 10h00 UTC = 10h00 Abidjan (GMT+0). GitHub peut decaler de quelques minutes.
+    - cron: "0 10 * * *"
+  # Permet aussi de lancer l'envoi a la main depuis l'onglet "Actions" (pour tester).
+  workflow_dispatch: {}
+
+jobs:
+  envoyer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recuperer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer les dependances
+        run: pip install -r requirements.txt
+
+      - name: Generer et envoyer le PDF MIX
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: python envoi_mail_mix.py
