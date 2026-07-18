@@ -145,6 +145,7 @@ def verifier_acces():
     st.stop()
 
 
+auth.restaurer_session()   # reconnecte via cookie si session précédente
 verifier_acces()
 
 # --- Barre latérale : utilisateur connecté + ses stratégies + déconnexion ---
@@ -162,6 +163,48 @@ with st.sidebar:
 st.title("🐎 PMU Prono — Pronostics du jour")
 st.caption("Modele entraine sur 13 ans de courses FRANCAISES. Strategie SECURITE : le Placé. "
            "(Courses etrangeres exclues.)")
+
+# ═══════════════════════════════════════════════════════════════
+#  PANNEAU SUPERADMIN — gérer les utilisateurs et leurs droits
+# ═══════════════════════════════════════════════════════════════
+_moi = auth.utilisateur_actuel()
+if _moi and auth.est_admin(_moi["email"]):
+    with st.expander("🛠️ Administration — utilisateurs et droits", expanded=False):
+        try:
+            _users = auth.lister_utilisateurs()
+            st.caption(f"{len(_users)} utilisateur(s). Coche/décoche les stratégies puis enregistre. "
+                       "Les admins ont automatiquement tout.")
+            _df_admin = pd.DataFrame([{
+                "Email": u["email"],
+                "⭐ Placé": "place" in u["strategies"],
+                "🏆 Gagnant": "gagnant" in u["strategies"],
+                "🎲 MIX": "mix" in u["strategies"],
+                "🎰 Quinté+": "quinte" in u["strategies"],
+                "Admin": u["admin"],
+                "_id": u["user_id"],
+            } for u in _users])
+            _edite = st.data_editor(
+                _df_admin, hide_index=True, use_container_width=True,
+                disabled=["Email", "Admin"],
+                column_config={"_id": None},
+                key="admin_editor")
+            if st.button("💾 Enregistrer les droits"):
+                _n = 0
+                for _, _row in _edite.iterrows():
+                    if _row["Admin"]:
+                        continue
+                    _strats = []
+                    if _row["⭐ Placé"]: _strats.append("place")
+                    if _row["🏆 Gagnant"]: _strats.append("gagnant")
+                    if _row["🎲 MIX"]: _strats.append("mix")
+                    if _row["🎰 Quinté+"]: _strats.append("quinte")
+                    auth.definir_droits(_row["_id"], _strats)
+                    _n += 1
+                st.success(f"✅ Droits mis à jour pour {_n} utilisateur(s). "
+                           "Ils verront le changement à leur prochaine connexion.")
+                st.rerun()
+        except Exception as _e:
+            st.error(f"Erreur d'administration : {_e}")
 
 from datetime import datetime, timezone
 
@@ -209,269 +252,273 @@ st.caption("Les résultats se figent au chargement. Clique **🔄 Actualiser les
 # ═══════════════════════════════════════════════════════════════
 #  SELECTION MIX du jour (EN PREMIER — Placé Fort + Gagnant Moyen)
 # ═══════════════════════════════════════════════════════════════
-st.header("🎲 Sélection MIX du jour")
-st.caption("Placé FORT (≥60%) joués au PLACÉ **+** Gagnant Moyen (<40%) joués au GAGNANT. "
-           "~2 paris/course. Plus gros bénéfice backtesté (+13 045€ sur 2021-26).")
+if auth.a_droit("mix"):
+    st.header("🎲 Sélection MIX du jour")
+    st.caption("Placé FORT (≥60%) joués au PLACÉ **+** Gagnant Moyen (<40%) joués au GAGNANT. "
+               "~2 paris/course. Plus gros bénéfice backtesté (+13 045€ sur 2021-26).")
 
-pf = df[(df["rang_place"] == 1) & (df["proba_place"] >= 0.6)].copy()
-pf["Pari"] = "PLACÉ"; pf["proba"] = pf["proba_place"]
-gm = df[(df["rang_gagnant"] == 1) & (df["proba_gagnant"] < 0.4)].copy()
-gm["Pari"] = "GAGNANT"; gm["proba"] = gm["proba_gagnant"]
-mix = pd.concat([pf, gm], ignore_index=True)
+    pf = df[(df["rang_place"] == 1) & (df["proba_place"] >= 0.6)].copy()
+    pf["Pari"] = "PLACÉ"; pf["proba"] = pf["proba_place"]
+    gm = df[(df["rang_gagnant"] == 1) & (df["proba_gagnant"] < 0.4)].copy()
+    gm["Pari"] = "GAGNANT"; gm["proba"] = gm["proba_gagnant"]
+    mix = pd.concat([pf, gm], ignore_index=True)
 
-def _mix_ok(row):
-    if pd.isna(row["position"]):
-        return False
-    return (row["Pari"] == "PLACÉ" and row["position"] <= 3) or \
-           (row["Pari"] == "GAGNANT" and row["position"] == 1)
+    def _mix_ok(row):
+        if pd.isna(row["position"]):
+            return False
+        return (row["Pari"] == "PLACÉ" and row["position"] <= 3) or \
+               (row["Pari"] == "GAGNANT" and row["position"] == 1)
 
-def _mix_res(row):
-    if not row["course_finie"]:
-        return "⏳ à venir"
-    pos = row["position"]
-    if pd.isna(pos):
-        return "❌"
-    return f"{int(pos)}e {'✅' if _mix_ok(row) else '❌'}"
+    def _mix_res(row):
+        if not row["course_finie"]:
+            return "⏳ à venir"
+        pos = row["position"]
+        if pd.isna(pos):
+            return "❌"
+        return f"{int(pos)}e {'✅' if _mix_ok(row) else '❌'}"
 
-def _mix_gain(row):
-    if not _mix_ok(row):
-        return 0.0
-    r = row["rapport_place"] if row["Pari"] == "PLACÉ" else row["rapport_gagnant"]
-    return r if pd.notna(r) else 0.0
+    def _mix_gain(row):
+        if not _mix_ok(row):
+            return 0.0
+        r = row["rapport_place"] if row["Pari"] == "PLACÉ" else row["rapport_gagnant"]
+        return r if pd.notna(r) else 0.0
 
-if len(mix):
-    mix["Heure GMT"] = mix["heure"].apply(heure_gmt)
-    mix["Résultat"] = mix.apply(_mix_res, axis=1)
-    mix = mix.sort_values("heure", na_position="last")
+    if len(mix):
+        mix["Heure GMT"] = mix["heure"].apply(heure_gmt)
+        mix["Résultat"] = mix.apply(_mix_res, axis=1)
+        mix = mix.sort_values("heure", na_position="last")
 
-    couru = mix[mix["course_finie"]].copy()
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Paris MIX du jour", len(mix))
-    c2.metric("Déjà courus", len(couru))
-    if len(couru):
-        couru["ok"] = couru.apply(_mix_ok, axis=1)
-        couru["g"] = couru.apply(_mix_gain, axis=1)
-        profit = couru["g"].sum() - len(couru)
-        c3.metric("Réussite", f"{couru['ok'].mean():.0%}", f"{int(couru['ok'].sum())}/{len(couru)}")
-        c4.metric("Bénéfice (1€/pari)", f"{profit:+.1f} €", f"ROI {profit/len(couru):+.0%}")
+        couru = mix[mix["course_finie"]].copy()
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Paris MIX du jour", len(mix))
+        c2.metric("Déjà courus", len(couru))
+        if len(couru):
+            couru["ok"] = couru.apply(_mix_ok, axis=1)
+            couru["g"] = couru.apply(_mix_gain, axis=1)
+            profit = couru["g"].sum() - len(couru)
+            c3.metric("Réussite", f"{couru['ok'].mean():.0%}", f"{int(couru['ok'].sum())}/{len(couru)}")
+            c4.metric("Bénéfice (1€/pari)", f"{profit:+.1f} €", f"ROI {profit/len(couru):+.0%}")
+        else:
+            c3.metric("Réussite", "—")
+            c4.metric("Bénéfice (1€/pari)", "—")
+
+        vue_mix = mix[["course", "Heure GMT", "hippodrome", "num_pmu", "nom", "Pari",
+                       "proba", "cote_reference", "Résultat"]].copy()
+        vue_mix.columns = ["Course", "Heure GMT", "Hippodrome", "N°", "Cheval", "Pari",
+                           "Proba", "Cote matin", "Résultat"]
+        vue_mix["Proba"] = (vue_mix["Proba"] * 100).round(0).astype(int).astype(str) + "%"
+        st.caption("Trié par heure. Colonne **Pari** = jouer au PLACÉ ou au GAGNANT selon la ligne.")
+        st.dataframe(vue_mix, use_container_width=True, hide_index=True,
+                     height=min(700, 60 + 35 * len(vue_mix)))
+        st.download_button(
+            "📄 Télécharger MES paris MIX (PDF)",
+            data=mix_pdf(jour.isoformat(), mix.rename(columns={"num_pmu": "num", "Pari": "pari"})),
+            file_name=f"selection_mix_{jour.isoformat()}.pdf",
+            mime="application/pdf", key="dl_mix")
     else:
-        c3.metric("Réussite", "—")
-        c4.metric("Bénéfice (1€/pari)", "—")
-
-    vue_mix = mix[["course", "Heure GMT", "hippodrome", "num_pmu", "nom", "Pari",
-                   "proba", "cote_reference", "Résultat"]].copy()
-    vue_mix.columns = ["Course", "Heure GMT", "Hippodrome", "N°", "Cheval", "Pari",
-                       "Proba", "Cote matin", "Résultat"]
-    vue_mix["Proba"] = (vue_mix["Proba"] * 100).round(0).astype(int).astype(str) + "%"
-    st.caption("Trié par heure. Colonne **Pari** = jouer au PLACÉ ou au GAGNANT selon la ligne.")
-    st.dataframe(vue_mix, use_container_width=True, hide_index=True,
-                 height=min(700, 60 + 35 * len(vue_mix)))
-    st.download_button(
-        "📄 Télécharger MES paris MIX (PDF)",
-        data=mix_pdf(jour.isoformat(), mix.rename(columns={"num_pmu": "num", "Pari": "pari"})),
-        file_name=f"selection_mix_{jour.isoformat()}.pdf",
-        mime="application/pdf", key="dl_mix")
-else:
-    st.info("Aucun pari MIX pour cette date.")
+        st.info("Aucun pari MIX pour cette date.")
 
 # ═══════════════════════════════════════════════════════════════
 #  SELECTION DU JOUR — les pronos Placé les plus surs
 # ═══════════════════════════════════════════════════════════════
-st.header("⭐ Sélection Placé du jour")
-st.caption("Les chevaux que le modele juge les plus surs de finir dans les 3 (courses FR). "
-           "Seuil 'FORT' = proba de place >= 60%.")
+if auth.a_droit("place"):
+    st.header("⭐ Sélection Placé du jour")
+    st.caption("Les chevaux que le modele juge les plus surs de finir dans les 3 (courses FR). "
+               "Seuil 'FORT' = proba de place >= 60%.")
 
-tri_placé = st.selectbox(
-    "Trier la sélection (s'applique aussi au PDF)",
-    ["Heure GMT (chronologique)", "Confiance du modèle", "Hippodrome"],
-    index=0, key="tri_place")
+    tri_placé = st.selectbox(
+        "Trier la sélection (s'applique aussi au PDF)",
+        ["Heure GMT (chronologique)", "Confiance du modèle", "Hippodrome"],
+        index=0, key="tri_place")
 
-def fmt_resultat(row):
-    """Affiche le verdict du cheval choisi selon l'etat de la course."""
-    if not row["course_finie"]:
-        return "⏳ à venir"
-    pos = row["position"]
-    if pd.notna(pos) and int(pos) <= 3:
-        return f"{int(pos)}e  ✅ placé"
-    if pd.notna(pos):
-        return f"{int(pos)}e  ❌ non placé"
-    return "❌ non placé"   # course finie mais cheval hors arrivee (chute, disq...)
+    def fmt_resultat(row):
+        """Affiche le verdict du cheval choisi selon l'etat de la course."""
+        if not row["course_finie"]:
+            return "⏳ à venir"
+        pos = row["position"]
+        if pd.notna(pos) and int(pos) <= 3:
+            return f"{int(pos)}e  ✅ placé"
+        if pd.notna(pos):
+            return f"{int(pos)}e  ❌ non placé"
+        return "❌ non placé"   # course finie mais cheval hors arrivee (chute, disq...)
 
-top = df[df["rang_place"] == 1].copy()
-top["Confiance"] = top["proba_place"].apply(lambda p: "🟢 FORT" if p >= 0.6 else "🟡 Moyen")
-top["Résultat"] = top.apply(fmt_resultat, axis=1)
+    top = df[df["rang_place"] == 1].copy()
+    top["Confiance"] = top["proba_place"].apply(lambda p: "🟢 FORT" if p >= 0.6 else "🟡 Moyen")
+    top["Résultat"] = top.apply(fmt_resultat, axis=1)
 
-# Tri choisi par l'utilisateur — applique au tableau ET au PDF
-if tri_placé.startswith("Heure"):
-    top = top.sort_values("heure", ascending=True, na_position="last")
-elif tri_placé.startswith("Hippodrome"):
-    top = top.sort_values(["hippodrome", "heure"], na_position="last")
-else:
-    top = top.sort_values("proba_place", ascending=False)
-
-# --- Indicateur de reussite du jour, par niveau de confiance ---
-def bloc_reussite(titre, sous_ensemble):
-    couru = sous_ensemble[sous_ensemble["course_finie"]]   # course finie = pari resolu
-    st.markdown(f"**{titre}**")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Pronos du jour", len(sous_ensemble))
-    c2.metric("Déjà courus", len(couru))
-    if len(couru):
-        place = couru["position"] <= 3
-        nb_ok = int(place.sum())
-        c3.metric("Réussite (placés)", f"{place.mean():.0%}", f"{nb_ok}/{len(couru)}")
-        # Benefice : mise 1 par pari couru ; gain = rapport_place si place, sinon 0
-        gains = couru["rapport_place"].where(place, 0).fillna(0).sum()
-        profit = gains - len(couru)
-        c4.metric("Bénéfice (1€/pari)", f"{profit:+.1f} €", f"ROI {profit/len(couru):+.0%}")
+    # Tri choisi par l'utilisateur — applique au tableau ET au PDF
+    if tri_placé.startswith("Heure"):
+        top = top.sort_values("heure", ascending=True, na_position="last")
+    elif tri_placé.startswith("Hippodrome"):
+        top = top.sort_values(["hippodrome", "heure"], na_position="last")
     else:
-        c3.metric("Réussite (placés)", "—")
-        c4.metric("Bénéfice (1€/pari)", "—")
+        top = top.sort_values("proba_place", ascending=False)
 
-col_f, col_m = st.columns(2)
-with col_f:
-    bloc_reussite("🟢 FORT (proba ≥ 60%)", top[top["proba_place"] >= 0.6])
-with col_m:
-    bloc_reussite("🟡 Moyen (proba < 60%)", top[top["proba_place"] < 0.6])
+    # --- Indicateur de reussite du jour, par niveau de confiance ---
+    def bloc_reussite(titre, sous_ensemble):
+        couru = sous_ensemble[sous_ensemble["course_finie"]]   # course finie = pari resolu
+        st.markdown(f"**{titre}**")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Pronos du jour", len(sous_ensemble))
+        c2.metric("Déjà courus", len(couru))
+        if len(couru):
+            place = couru["position"] <= 3
+            nb_ok = int(place.sum())
+            c3.metric("Réussite (placés)", f"{place.mean():.0%}", f"{nb_ok}/{len(couru)}")
+            # Benefice : mise 1 par pari couru ; gain = rapport_place si place, sinon 0
+            gains = couru["rapport_place"].where(place, 0).fillna(0).sum()
+            profit = gains - len(couru)
+            c4.metric("Bénéfice (1€/pari)", f"{profit:+.1f} €", f"ROI {profit/len(couru):+.0%}")
+        else:
+            c3.metric("Réussite (placés)", "—")
+            c4.metric("Bénéfice (1€/pari)", "—")
 
-top["Heure GMT"] = top["heure"].apply(heure_gmt)
+    col_f, col_m = st.columns(2)
+    with col_f:
+        bloc_reussite("🟢 FORT (proba ≥ 60%)", top[top["proba_place"] >= 0.6])
+    with col_m:
+        bloc_reussite("🟡 Moyen (proba < 60%)", top[top["proba_place"] < 0.6])
 
-COLS = ["course", "Heure GMT", "hippodrome", "num_pmu", "nom", "driver",
-        "proba_place", "cote_reference", "Résultat"]
-NOMS = ["Course", "Heure GMT", "Hippodrome", "N°", "Cheval", "Driver/Jockey",
-        "Proba placé", "Cote matin", "Résultat"]
+    top["Heure GMT"] = top["heure"].apply(heure_gmt)
 
-def format_table(sous_ensemble):
-    v = sous_ensemble[COLS].copy()
-    v.columns = NOMS
-    v["Proba placé"] = (v["Proba placé"] * 100).round(0).astype(int).astype(str) + "%"
-    return v
+    COLS = ["course", "Heure GMT", "hippodrome", "num_pmu", "nom", "driver",
+            "proba_place", "cote_reference", "Résultat"]
+    NOMS = ["Course", "Heure GMT", "Hippodrome", "N°", "Cheval", "Driver/Jockey",
+            "Proba placé", "Cote matin", "Résultat"]
 
-fort = top[top["proba_place"] >= 0.6]
-moyen = top[top["proba_place"] < 0.6]
+    def format_table(sous_ensemble):
+        v = sous_ensemble[COLS].copy()
+        v.columns = NOMS
+        v["Proba placé"] = (v["Proba placé"] * 100).round(0).astype(int).astype(str) + "%"
+        return v
 
-# ═══ LA LISTE À JOUER : Placé FORT, isolé ═══
-st.subheader(f"🎯 À JOUER — {len(fort)} paris Placé FORT")
-st.caption(f"Ta stratégie : jouer ces chevaux au **placé**. Ordre : **{tri_placé}** (idem PDF).")
-st.dataframe(format_table(fort), use_container_width=True, hide_index=True,
-             height=min(700, 60 + 35 * len(fort)))
+    fort = top[top["proba_place"] >= 0.6]
+    moyen = top[top["proba_place"] < 0.6]
 
-pdf_bytes = selection_pdf(jour.isoformat(), top)
-st.download_button(
-    "📄 Télécharger MES paris du jour (PDF)",
-    data=pdf_bytes,
-    file_name=f"paris_place_fort_{jour.isoformat()}.pdf",
-    mime="application/pdf",
-)
+    # ═══ LA LISTE À JOUER : Placé FORT, isolé ═══
+    st.subheader(f"🎯 À JOUER — {len(fort)} paris Placé FORT")
+    st.caption(f"Ta stratégie : jouer ces chevaux au **placé**. Ordre : **{tri_placé}** (idem PDF).")
+    st.dataframe(format_table(fort), use_container_width=True, hide_index=True,
+                 height=min(700, 60 + 35 * len(fort)))
 
-# Moyen : secondaire, replié (à ne PAS jouer)
-with st.expander(f"🟡 Voir aussi les {len(moyen)} pronos Moyen (indicatif — à ne pas jouer)"):
-    st.dataframe(format_table(moyen), use_container_width=True, hide_index=True,
-                 height=min(500, 60 + 35 * len(moyen)))
+    pdf_bytes = selection_pdf(jour.isoformat(), top)
+    st.download_button(
+        "📄 Télécharger MES paris du jour (PDF)",
+        data=pdf_bytes,
+        file_name=f"paris_place_fort_{jour.isoformat()}.pdf",
+        mime="application/pdf",
+    )
+
+    # Moyen : secondaire, replié (à ne PAS jouer)
+    with st.expander(f"🟡 Voir aussi les {len(moyen)} pronos Moyen (indicatif — à ne pas jouer)"):
+        st.dataframe(format_table(moyen), use_container_width=True, hide_index=True,
+                     height=min(500, 60 + 35 * len(moyen)))
 
 # ═══════════════════════════════════════════════════════════════
 #  SELECTION GAGNANT du jour
 # ═══════════════════════════════════════════════════════════════
-st.header("🏆 Sélection Gagnant du jour")
-st.caption("Le cheval que le modele juge le plus probable de GAGNER chaque course (FR). "
-           "Bien plus dur que le placé : meme le meilleur pick ne gagne qu'~1 fois sur 3. "
-           "Seuil 'FORT' = proba de gain >= 40% (~43% de victoires au backtest).")
+if auth.a_droit("gagnant"):
+    st.header("🏆 Sélection Gagnant du jour")
+    st.caption("Le cheval que le modele juge le plus probable de GAGNER chaque course (FR). "
+               "Bien plus dur que le placé : meme le meilleur pick ne gagne qu'~1 fois sur 3. "
+               "Seuil 'FORT' = proba de gain >= 40% (~43% de victoires au backtest).")
 
-def fmt_res_gagnant(row):
-    if not row["course_finie"]:
-        return "⏳ à venir"
-    pos = row["position"]
-    if pd.notna(pos) and int(pos) == 1:
-        return "1er  ✅ gagné"
-    if pd.notna(pos):
-        return f"{int(pos)}e  ❌"
-    return "❌ non classé"
+    def fmt_res_gagnant(row):
+        if not row["course_finie"]:
+            return "⏳ à venir"
+        pos = row["position"]
+        if pd.notna(pos) and int(pos) == 1:
+            return "1er  ✅ gagné"
+        if pd.notna(pos):
+            return f"{int(pos)}e  ❌"
+        return "❌ non classé"
 
-topg = df[df["rang_gagnant"] == 1].copy()
-topg["Confiance"] = topg["proba_gagnant"].apply(lambda p: "🟢 FORT" if p >= 0.40 else "🟡 Moyen")
-topg["Résultat"] = topg.apply(fmt_res_gagnant, axis=1)
-topg = topg.sort_values("proba_gagnant", ascending=False)
+    topg = df[df["rang_gagnant"] == 1].copy()
+    topg["Confiance"] = topg["proba_gagnant"].apply(lambda p: "🟢 FORT" if p >= 0.40 else "🟡 Moyen")
+    topg["Résultat"] = topg.apply(fmt_res_gagnant, axis=1)
+    topg = topg.sort_values("proba_gagnant", ascending=False)
 
-def bloc_gagnant(titre, sub):
-    couru = sub[sub["course_finie"]]
-    st.markdown(f"**{titre}**")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Pronos du jour", len(sub))
-    c2.metric("Déjà courus", len(couru))
-    if len(couru):
-        win = couru["position"] == 1
-        c3.metric("Victoires", f"{win.mean():.0%}", f"{int(win.sum())}/{len(couru)}")
-        gains = couru["rapport_gagnant"].where(win, 0).fillna(0).sum()
-        profit = gains - len(couru)
-        c4.metric("Bénéfice (1€/pari)", f"{profit:+.1f} €", f"ROI {profit/len(couru):+.0%}")
-    else:
-        c3.metric("Victoires", "—")
-        c4.metric("Bénéfice (1€/pari)", "—")
+    def bloc_gagnant(titre, sub):
+        couru = sub[sub["course_finie"]]
+        st.markdown(f"**{titre}**")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Pronos du jour", len(sub))
+        c2.metric("Déjà courus", len(couru))
+        if len(couru):
+            win = couru["position"] == 1
+            c3.metric("Victoires", f"{win.mean():.0%}", f"{int(win.sum())}/{len(couru)}")
+            gains = couru["rapport_gagnant"].where(win, 0).fillna(0).sum()
+            profit = gains - len(couru)
+            c4.metric("Bénéfice (1€/pari)", f"{profit:+.1f} €", f"ROI {profit/len(couru):+.0%}")
+        else:
+            c3.metric("Victoires", "—")
+            c4.metric("Bénéfice (1€/pari)", "—")
 
-cg1, cg2 = st.columns(2)
-with cg1:
-    bloc_gagnant("🟢 FORT (proba ≥ 40%)", topg[topg["proba_gagnant"] >= 0.40])
-with cg2:
-    bloc_gagnant("🟡 Moyen (proba < 40%)", topg[topg["proba_gagnant"] < 0.40])
+    cg1, cg2 = st.columns(2)
+    with cg1:
+        bloc_gagnant("🟢 FORT (proba ≥ 40%)", topg[topg["proba_gagnant"] >= 0.40])
+    with cg2:
+        bloc_gagnant("🟡 Moyen (proba < 40%)", topg[topg["proba_gagnant"] < 0.40])
 
-topg["Heure GMT"] = topg["heure"].apply(heure_gmt)
-vueg = topg[["course", "Heure GMT", "hippodrome", "num_pmu", "nom", "driver",
-             "proba_gagnant", "cote_reference", "Confiance", "Résultat"]].copy()
-vueg.columns = ["Course", "Heure GMT", "Hippodrome", "N°", "Cheval", "Driver/Jockey",
-                "Proba gagnant", "Cote matin", "Confiance", "Résultat"]
-vueg["Proba gagnant"] = (vueg["Proba gagnant"] * 100).round(0).astype(int).astype(str) + "%"
-st.caption("Trié par confiance du modèle (le plus probable gagnant en premier). "
-           "Clique l'en-tête pour trier par heure ou par course.")
-st.dataframe(vueg, use_container_width=True, hide_index=True, height=min(600, 60 + 35 * len(vueg)))
+    topg["Heure GMT"] = topg["heure"].apply(heure_gmt)
+    vueg = topg[["course", "Heure GMT", "hippodrome", "num_pmu", "nom", "driver",
+                 "proba_gagnant", "cote_reference", "Confiance", "Résultat"]].copy()
+    vueg.columns = ["Course", "Heure GMT", "Hippodrome", "N°", "Cheval", "Driver/Jockey",
+                    "Proba gagnant", "Cote matin", "Confiance", "Résultat"]
+    vueg["Proba gagnant"] = (vueg["Proba gagnant"] * 100).round(0).astype(int).astype(str) + "%"
+    st.caption("Trié par confiance du modèle (le plus probable gagnant en premier). "
+               "Clique l'en-tête pour trier par heure ou par course.")
+    st.dataframe(vueg, use_container_width=True, hide_index=True, height=min(600, 60 + 35 * len(vueg)))
 
-st.warning("⚠️ Le Gagnant est plus risqué et plus variable que le Placé (on perd souvent). "
-           "A jouer avec parcimonie. Le ROI backteste reste un plafond optimiste, pas une promesse.")
+    st.warning("⚠️ Le Gagnant est plus risqué et plus variable que le Placé (on perd souvent). "
+               "A jouer avec parcimonie. Le ROI backteste reste un plafond optimiste, pas une promesse.")
 
 # ═══════════════════════════════════════════════════════════════
 #  QUINTE+ du jour
 # ═══════════════════════════════════════════════════════════════
-st.header("🎰 Quinté+ du jour")
-q = df[df["quinte"]].copy() if "quinte" in df.columns else df.iloc[0:0]
-if q.empty:
-    st.info("Aucune course Quinté+ identifiee pour cette date (programme pas encore publie, "
-            "ou le Quinté est prevu un autre jour).")
-else:
-    course_q, hippo_q = q["course"].iloc[0], q["hippodrome"].iloc[0]
-    heure_q = heure_gmt(q["heure"].iloc[0])
-    q = q.sort_values("proba_place", ascending=False).reset_index(drop=True)
-    q["Rang"] = q.index + 1
-    st.subheader(f"Course : {course_q} — {hippo_q}  ({len(q)} partants)  ·  {heure_q} GMT")
-
-    if q["course_finie"].any():
-        top5 = q.dropna(subset=["position"]).sort_values("position").head(5)
-        arr = "  -  ".join(f"{int(r['position'])}. #{int(r['num_pmu'])} {r['nom']}" for _, r in top5.iterrows())
-        st.success(f"🏁 Arrivée (5 premiers) : {arr}")
-        gagnants_num = set(top5["num_pmu"])
-        c7, c8 = st.columns(2)
-        c7.metric("Base Top 7 : les 5 dedans ?", f"{q.head(7)['num_pmu'].isin(gagnants_num).sum()}/5")
-        c8.metric("Base Top 8 : les 5 dedans ?", f"{q.head(8)['num_pmu'].isin(gagnants_num).sum()}/5")
+if auth.a_droit("quinte"):
+    st.header("🎰 Quinté+ du jour")
+    q = df[df["quinte"]].copy() if "quinte" in df.columns else df.iloc[0:0]
+    if q.empty:
+        st.info("Aucune course Quinté+ identifiee pour cette date (programme pas encore publie, "
+                "ou le Quinté est prevu un autre jour).")
     else:
-        st.caption("🕐 Course pas encore courue.")
+        course_q, hippo_q = q["course"].iloc[0], q["hippodrome"].iloc[0]
+        heure_q = heure_gmt(q["heure"].iloc[0])
+        q = q.sort_values("proba_place", ascending=False).reset_index(drop=True)
+        q["Rang"] = q.index + 1
+        st.subheader(f"Course : {course_q} — {hippo_q}  ({len(q)} partants)  ·  {heure_q} GMT")
 
-    vue = q.head(10)[["Rang", "num_pmu", "nom", "driver", "proba_place", "proba_gagnant", "cote_reference"]].copy()
-    vue.columns = ["Rang", "N°", "Cheval", "Driver/Jockey", "Proba placé", "Proba gagnant", "Cote matin"]
-    vue["Proba placé"] = (vue["Proba placé"] * 100).round(0).astype(int).astype(str) + "%"
-    vue["Proba gagnant"] = (vue["Proba gagnant"] * 100).round(0).astype(int).astype(str) + "%"
-    st.markdown("**Classement du modèle** — joue les premiers comme base :")
-    st.dataframe(vue, use_container_width=True, hide_index=True, height=min(500, 60 + 35 * len(vue)))
+        if q["course_finie"].any():
+            top5 = q.dropna(subset=["position"]).sort_values("position").head(5)
+            arr = "  -  ".join(f"{int(r['position'])}. #{int(r['num_pmu'])} {r['nom']}" for _, r in top5.iterrows())
+            st.success(f"🏁 Arrivée (5 premiers) : {arr}")
+            gagnants_num = set(top5["num_pmu"])
+            c7, c8 = st.columns(2)
+            c7.metric("Base Top 7 : les 5 dedans ?", f"{q.head(7)['num_pmu'].isin(gagnants_num).sum()}/5")
+            c8.metric("Base Top 8 : les 5 dedans ?", f"{q.head(8)['num_pmu'].isin(gagnants_num).sum()}/5")
+        else:
+            st.caption("🕐 Course pas encore courue.")
 
-    st.markdown("**Chances d'avoir les 5 premiers dans ta base** (backteste, en désordre) :")
-    ref = pd.DataFrame({
-        "Base (chevaux)": [5, 6, 7, 8, 10],
-        "Quinté 5/5": ["5%", "14%", "26%", "41%", "70%"],
-        "Bonus 4/5": ["32%", "50%", "67%", "79%", "93%"],
-        "Tickets a boxer": [1, 6, 21, 56, 252],
-    })
-    st.dataframe(ref, use_container_width=True, hide_index=True)
+        vue = q.head(10)[["Rang", "num_pmu", "nom", "driver", "proba_place", "proba_gagnant", "cote_reference"]].copy()
+        vue.columns = ["Rang", "N°", "Cheval", "Driver/Jockey", "Proba placé", "Proba gagnant", "Cote matin"]
+        vue["Proba placé"] = (vue["Proba placé"] * 100).round(0).astype(int).astype(str) + "%"
+        vue["Proba gagnant"] = (vue["Proba gagnant"] * 100).round(0).astype(int).astype(str) + "%"
+        st.markdown("**Classement du modèle** — joue les premiers comme base :")
+        st.dataframe(vue, use_container_width=True, hide_index=True, height=min(500, 60 + 35 * len(vue)))
 
-st.warning("⚠️ Le Quinté+ est une LOTERIE : meme avec une bonne base, tu perds la plupart du "
-           "temps, et le gros lot demande l'ordre EXACT. A jouer pour le plaisir/le jackpot, "
-           "avec de petites sommes — jamais comme une strategie de gain.")
+        st.markdown("**Chances d'avoir les 5 premiers dans ta base** (backteste, en désordre) :")
+        ref = pd.DataFrame({
+            "Base (chevaux)": [5, 6, 7, 8, 10],
+            "Quinté 5/5": ["5%", "14%", "26%", "41%", "70%"],
+            "Bonus 4/5": ["32%", "50%", "67%", "79%", "93%"],
+            "Tickets a boxer": [1, 6, 21, 56, 252],
+        })
+        st.dataframe(ref, use_container_width=True, hide_index=True)
+
+    st.warning("⚠️ Le Quinté+ est une LOTERIE : meme avec une bonne base, tu perds la plupart du "
+               "temps, et le gros lot demande l'ordre EXACT. A jouer pour le plaisir/le jackpot, "
+               "avec de petites sommes — jamais comme une strategie de gain.")
 
 # ═══════════════════════════════════════════════════════════════
 #  DETAIL PAR COURSE

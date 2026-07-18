@@ -1,34 +1,96 @@
-# auth.py — Authentification (email + mot de passe) et droits, via Supabase.
+# auth.py — Authentification, droits par stratégie, persistance et administration.
 #
-# Phase 1 (test) : tout inscrit a droit aux 4 strategies.
-# Phase 2 (payant) : _droits_utilisateur() lira la table des abonnements.
+# - Connexion / inscription email + mot de passe via Supabase Auth.
+# - Droits lus dans la table `entitlements` (une ligne par utilisateur).
+# - Persistance de session via cookie (rester connecté après un rafraîchissement).
+# - Superadmin (emails listés dans les secrets) : voit tous les users et gère leurs droits.
 
 import streamlit as st
 from supabase import create_client, Client
+from streamlit_cookies_controller import CookieController
 
-# Les 4 strategies de l'app (identifiants internes)
+# Les 4 stratégies (identifiants internes) + libellés d'affichage
 STRATEGIES = ["place", "gagnant", "mix", "quinte"]
-# Droits par defaut a l'inscription (pour l'instant : tout)
-DROITS_DEFAUT = list(STRATEGIES)
+LIBELLES = {"place": "⭐ Placé", "gagnant": "🏆 Gagnant",
+            "mix": "🎲 MIX", "quinte": "🎰 Quinté+"}
+
+_COOKIE = "pmu_rt"  # nom du cookie qui stocke le refresh token
 
 
-def _client() -> Client:
-    """Cree un client Supabase neuf (pas de cache : evite de partager l'etat
-    d'authentification entre utilisateurs)."""
+# ══════════════════ Clients Supabase ══════════════════
+
+def _anon_client() -> Client:
+    """Client public (clé anon). Pour connexion, inscription, lecture de SES droits."""
     cfg = st.secrets["supabase"]
     return create_client(cfg["url"], cfg["key"])
 
 
-def _droits_utilisateur(user) -> list[str]:
-    """Droits d'un utilisateur. Phase 1 : toutes les strategies.
-    Phase 2 : lira les strategies payees dans la base."""
-    return list(DROITS_DEFAUT)
+def _admin_client() -> Client:
+    """Client admin (clé service_role). Pour lister tous les users et écrire les droits.
+    À n'utiliser que pour les opérations d'administration."""
+    cfg = st.secrets["supabase"]
+    return create_client(cfg["url"], cfg["service_key"])
 
 
-# ---------- Etat de session ----------
+# ══════════════════ Cookies (persistance) ══════════════════
+
+def _cookies() -> CookieController:
+    ck = st.session_state.get("_cookie_ctrl")
+    if ck is None:
+        ck = CookieController()
+        st.session_state["_cookie_ctrl"] = ck
+    return ck
+
+
+def _cookie_set(refresh_token: str):
+    try:
+        _cookies().set(_COOKIE, refresh_token, max_age=60 * 60 * 24 * 30)
+    except Exception:
+        pass
+
+
+def _cookie_get():
+    try:
+        return _cookies().get(_COOKIE)
+    except Exception:
+        return None
+
+
+def _cookie_del():
+    try:
+        _cookies().remove(_COOKIE)
+    except Exception:
+        pass
+
+
+# ══════════════════ Droits ══════════════════
+
+def est_admin(email: str) -> bool:
+    """True si l'email fait partie des superadmins (liste dans les secrets)."""
+    try:
+        admins = [e.lower() for e in st.secrets["admin"]["emails"]]
+    except Exception:
+        admins = []
+    return bool(email) and email.lower() in admins
+
+
+def _droits(user_id: str, email: str, client: Client) -> list[str]:
+    """Stratégies autorisées pour cet utilisateur. Les admins ont tout."""
+    if est_admin(email):
+        return list(STRATEGIES)
+    try:
+        r = (client.table("entitlements").select("strategies")
+             .eq("user_id", user_id).limit(1).execute())
+        if r.data:
+            return [s for s in (r.data[0].get("strategies") or []) if s in STRATEGIES]
+    except Exception:
+        pass
+    return []
+
+
+# ══════════════════ État de session ══════════════════
 
 def utilisateur_actuel():
-    """Retourne le dict utilisateur connecte, ou None."""
     return st.session_state.get("user")
 
 
@@ -37,29 +99,47 @@ def droits_actuels() -> list[str]:
 
 
 def a_droit(strat: str) -> bool:
-    """True si l'utilisateur connecte a droit a cette strategie."""
     return strat in droits_actuels()
 
 
-# ---------- Actions ----------
-
-def _memoriser(user):
+def _memoriser(user, client: Client):
     st.session_state["user"] = {"id": user.id, "email": user.email}
-    st.session_state["droits"] = _droits_utilisateur(user)
+    st.session_state["droits"] = _droits(user.id, user.email, client)
+
+
+# ══════════════════ Connexion / persistance ══════════════════
+
+def restaurer_session():
+    """Au chargement : si un cookie de session existe, reconnecte l'utilisateur."""
+    if utilisateur_actuel():
+        return
+    token = _cookie_get()
+    if not token:
+        return
+    try:
+        client = _anon_client()
+        res = client.auth.refresh_session(token)
+        if res and res.user:
+            _memoriser(res.user, client)
+            if res.session and res.session.refresh_token:
+                _cookie_set(res.session.refresh_token)
+    except Exception:
+        _cookie_del()
 
 
 def deconnexion():
     try:
-        _client().auth.sign_out()
+        _anon_client().auth.sign_out()
     except Exception:
         pass
+    _cookie_del()
     for cle in ("user", "droits"):
         st.session_state.pop(cle, None)
     st.rerun()
 
 
 def formulaire_auth() -> bool:
-    """Affiche connexion / inscription. Retourne True si l'utilisateur est connecte."""
+    """Affiche connexion / inscription. Retourne True si connecté."""
     if utilisateur_actuel():
         return True
 
@@ -72,9 +152,12 @@ def formulaire_auth() -> bool:
             valider = st.form_submit_button("Se connecter", use_container_width=True)
         if valider:
             try:
-                res = _client().auth.sign_in_with_password(
+                client = _anon_client()
+                res = client.auth.sign_in_with_password(
                     {"email": email.strip(), "password": mdp})
-                _memoriser(res.user)
+                _memoriser(res.user, client)
+                if res.session and res.session.refresh_token:
+                    _cookie_set(res.session.refresh_token)
                 st.rerun()
             except Exception:
                 st.error("Email ou mot de passe incorrect (ou compte pas encore confirmé).")
@@ -89,16 +172,58 @@ def formulaire_auth() -> bool:
                 st.error("Le mot de passe doit faire au moins 6 caractères.")
             else:
                 try:
-                    res = _client().auth.sign_up(
-                        {"email": email.strip(), "password": mdp})
+                    client = _anon_client()
+                    res = client.auth.sign_up({"email": email.strip(), "password": mdp})
                     if res.session is None:
-                        # Confirmation par email activee : compte cree mais pas encore actif
                         st.success("✅ Compte créé ! Vérifie ta boîte mail pour confirmer "
                                    "ton adresse, puis connecte-toi.")
                     else:
-                        _memoriser(res.user)
+                        _memoriser(res.user, client)
+                        if res.session and res.session.refresh_token:
+                            _cookie_set(res.session.refresh_token)
                         st.rerun()
                 except Exception as e:
                     st.error(f"Inscription impossible : {e}")
 
     return utilisateur_actuel() is not None
+
+
+# ══════════════════ Administration (superadmin) ══════════════════
+
+def lister_utilisateurs() -> list[dict]:
+    """Liste tous les utilisateurs + leurs droits. Réservé aux admins (clé service_role)."""
+    admin = _admin_client()
+    users = admin.auth.admin.list_users()
+    # Selon la version, list_users renvoie une liste ou un objet paginé
+    if hasattr(users, "users"):
+        users = users.users
+    droits_par_user = {}
+    try:
+        rows = admin.table("entitlements").select("user_id, strategies").execute()
+        for row in (rows.data or []):
+            droits_par_user[row["user_id"]] = row.get("strategies") or []
+    except Exception:
+        pass
+    resultat = []
+    for u in users:
+        email = getattr(u, "email", "") or ""
+        resultat.append({
+            "user_id": u.id,
+            "email": email,
+            "strategies": list(STRATEGIES) if est_admin(email)
+                          else droits_par_user.get(u.id, []),
+            "admin": est_admin(email),
+        })
+    return resultat
+
+
+def definir_droits(user_id: str, strategies: list[str]):
+    """Écrit les droits d'un utilisateur (upsert). Réservé aux admins (clé service_role)."""
+    from datetime import datetime, timezone
+    admin = _admin_client()
+    strategies = [s for s in strategies if s in STRATEGIES]
+    admin.table("entitlements").upsert({
+        "user_id": user_id,
+        "strategies": strategies,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).execute()
