@@ -25,17 +25,26 @@ def verifier_acces():
     # ============ HERO (rendu HTML fidele via iframe) ============
     hero = """
     <style>
-      body{margin:0; background:transparent;
+      *{box-sizing:border-box;}
+      html,body{height:100%; margin:0; background:transparent;
            font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}
-      .hero{background:linear-gradient(135deg,#7c3aed 0%,#2563eb 52%,#059669 100%);
-            border-radius:20px; padding:36px 22px; text-align:center; color:#fff;
+      .hero{height:100%; display:flex; flex-direction:column; justify-content:center;
+            background:linear-gradient(135deg,#7c3aed 0%,#2563eb 52%,#059669 100%);
+            border-radius:20px; padding:20px 16px; text-align:center; color:#fff;
             box-shadow:0 14px 40px rgba(37,99,235,.35);}
-      .horse{font-size:56px; line-height:1;}
-      .title{font-size:44px; font-weight:800; letter-spacing:.5px; margin-top:2px;}
-      .sub{font-size:18px; font-weight:500; opacity:.96; margin-top:8px;}
-      .pills{display:flex; gap:9px; flex-wrap:wrap; justify-content:center; margin-top:16px;}
-      .pill{background:rgba(255,255,255,.20); padding:6px 14px; border-radius:22px;
-            font-size:13.5px; font-weight:600; backdrop-filter:blur(4px);}
+      .horse{font-size:50px; line-height:1;}
+      .title{font-size:42px; font-weight:800; letter-spacing:.5px; margin-top:2px;}
+      .sub{font-size:17px; font-weight:500; opacity:.96; margin-top:7px;}
+      .pills{display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:13px;}
+      .pill{background:rgba(255,255,255,.20); padding:5px 12px; border-radius:20px;
+            font-size:13px; font-weight:600;}
+      @media (max-width:480px){
+        .horse{font-size:38px;}
+        .title{font-size:29px; letter-spacing:0;}
+        .sub{font-size:13px; margin-top:5px;}
+        .pills{gap:6px; margin-top:10px;}
+        .pill{font-size:11px; padding:4px 9px;}
+      }
     </style>
     <div class="hero">
       <div class="horse">🐎</div>
@@ -48,7 +57,7 @@ def verifier_acces():
         <span class="pill">🇫🇷 courses françaises</span>
       </div>
     </div>"""
-    components.html(hero, height=260)
+    components.html(hero, height=250)
 
     st.subheader("🎯 Le principe")
     st.write(
