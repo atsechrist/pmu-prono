@@ -147,6 +147,29 @@ def verifier_acces():
 
 auth.restaurer_session()   # reconnecte via cookie si session précédente
 auth.flush_cookie()        # écrit le cookie de session en attente (après connexion)
+
+if st.query_params.get("dbg") == "1":
+    import traceback
+    try:
+        _ctx = dict(st.context.cookies)
+    except Exception as _e:
+        _ctx = f"ERREUR st.context.cookies: {_e!r}"
+    st.write("cookies vus par le serveur:", _ctx)
+    _rt = None
+    try:
+        _rt = st.context.cookies.get("pmu_rt")
+    except Exception as _e:
+        st.write("get pmu_rt err:", repr(_e))
+    st.write("pmu_rt lu:", _rt)
+    if _rt:
+        try:
+            _r = auth._anon_client().auth.refresh_session(_rt)
+            st.write("refresh OK, user =", _r.user.email if _r and _r.user else None)
+        except Exception as _e:
+            st.write("refresh FAIL:", repr(_e))
+            st.code(traceback.format_exc())
+    st.stop()
+
 verifier_acces()
 
 # --- Barre latérale : utilisateur connecté + ses stratégies + déconnexion ---
