@@ -44,17 +44,20 @@ def _controller() -> CookieController:
 
 
 def _cookie_get():
-    """Lit le cookie via st.context.cookies (natif, disponible dès le chargement)."""
+    """Lit le cookie côté navigateur via le composant (st.context.cookies est vide
+    sur Streamlit Community Cloud à cause du proxy)."""
     try:
-        raw = st.context.cookies.get(_COOKIE)
+        raw = _controller().get(_COOKIE)
     except Exception:
         raw = None
     if not raw:
         return None
-    try:
-        return json.loads(raw)   # la lib peut encoder la valeur en JSON
-    except Exception:
-        return raw
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)   # la lib peut encoder la valeur en JSON
+        except Exception:
+            return raw
+    return raw
 
 
 def _cookie_del():

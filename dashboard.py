@@ -148,34 +148,6 @@ def verifier_acces():
 auth.restaurer_session()   # reconnecte via cookie si session précédente
 auth.flush_cookie()        # écrit le cookie de session en attente (après connexion)
 
-if st.query_params.get("dbg") == "1":
-    import traceback
-    from streamlit_cookies_controller import CookieController as _CC
-    try:
-        st.write("st.context.cookies:", dict(st.context.cookies))
-    except Exception as _e:
-        st.write("st.context err:", repr(_e))
-    try:
-        _cc = _CC()
-        _val = _cc.get("pmu_rt")
-        st.write("CookieController.get('pmu_rt') =", repr(_val))
-        try:
-            st.write("getAll =", _cc.getAll())
-        except Exception:
-            pass
-        if _val:
-            try:
-                _r = auth._anon_client().auth.refresh_session(_val)
-                st.write("refresh OK, user =", _r.user.email if _r and _r.user else None)
-            except Exception as _e:
-                st.write("refresh FAIL:", repr(_e))
-                st.code(traceback.format_exc())
-    except Exception as _e:
-        st.code(traceback.format_exc())
-    if st.button("re-check (2e rendu)"):
-        st.rerun()
-    st.stop()
-
 verifier_acces()
 
 # --- Barre latérale : utilisateur connecté + ses stratégies + déconnexion ---
