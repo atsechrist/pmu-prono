@@ -145,9 +145,6 @@ def verifier_acces():
     st.stop()
 
 
-auth.restaurer_session()   # reconnecte via cookie si session précédente
-auth.flush_cookie()        # écrit le cookie de session en attente (après connexion)
-
 verifier_acces()
 
 # --- Barre latérale : utilisateur connecté + ses stratégies + déconnexion ---
