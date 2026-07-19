@@ -44,12 +44,17 @@ def _controller() -> CookieController:
 
 
 def _cookie_get():
-    """Lit le cookie côté navigateur via le composant (st.context.cookies est vide
-    sur Streamlit Community Cloud à cause du proxy)."""
-    try:
-        raw = _controller().get(_COOKIE)
-    except Exception:
-        raw = None
+    """Lit le cookie côté navigateur. Le 1er composant CookieController d'un run peut
+    renvoyer None (chargement async de document.cookie) ; une 2e instance a la valeur.
+    (st.context.cookies est vide sur Streamlit Community Cloud à cause du proxy.)"""
+    raw = None
+    for _ in range(2):
+        try:
+            raw = CookieController().get(_COOKIE)
+        except Exception:
+            raw = None
+        if raw:
+            break
     if not raw:
         return None
     if isinstance(raw, str):
@@ -130,6 +135,10 @@ def restaurer_session():
         return
     token = _cookie_get()
     if not token:
+        # Filet de sécurité : laisse au composant cookie un cycle de rendu, puis re-tente une fois.
+        if not st.session_state.get("_ck_tried"):
+            st.session_state["_ck_tried"] = True
+            st.rerun()
         return
     try:
         client = _anon_client()
