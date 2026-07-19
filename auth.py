@@ -5,6 +5,7 @@
 # - Persistance de session via cookie (rester connecté après un rafraîchissement).
 # - Superadmin (emails listés dans les secrets) : voit tous les users et gère leurs droits.
 
+import json
 import streamlit as st
 from supabase import create_client, Client
 from streamlit_cookies_controller import CookieController
@@ -34,7 +35,7 @@ def _admin_client() -> Client:
 
 # ══════════════════ Cookies (persistance) ══════════════════
 
-def _cookies() -> CookieController:
+def _controller() -> CookieController:
     ck = st.session_state.get("_cookie_ctrl")
     if ck is None:
         ck = CookieController()
@@ -42,25 +43,36 @@ def _cookies() -> CookieController:
     return ck
 
 
-def _cookie_set(refresh_token: str):
-    try:
-        _cookies().set(_COOKIE, refresh_token, max_age=60 * 60 * 24 * 30)
-    except Exception:
-        pass
-
-
 def _cookie_get():
+    """Lit le cookie via st.context.cookies (natif, disponible dès le chargement)."""
     try:
-        return _cookies().get(_COOKIE)
+        raw = st.context.cookies.get(_COOKIE)
     except Exception:
+        raw = None
+    if not raw:
         return None
+    try:
+        return json.loads(raw)   # la lib peut encoder la valeur en JSON
+    except Exception:
+        return raw
 
 
 def _cookie_del():
     try:
-        _cookies().remove(_COOKIE)
+        _controller().remove(_COOKIE)
     except Exception:
         pass
+
+
+def flush_cookie():
+    """À appeler à chaque run : écrit le cookie de session en attente (posé après connexion).
+    Découplé du st.rerun() pour que l'écriture ait le temps de se faire."""
+    token = st.session_state.pop("_save_rt", None)
+    if token:
+        try:
+            _controller().set(_COOKIE, token)
+        except Exception:
+            pass
 
 
 # ══════════════════ Droits ══════════════════
@@ -122,7 +134,7 @@ def restaurer_session():
         if res and res.user:
             _memoriser(res.user, client)
             if res.session and res.session.refresh_token:
-                _cookie_set(res.session.refresh_token)
+                st.session_state["_save_rt"] = res.session.refresh_token
     except Exception:
         _cookie_del()
 
@@ -157,7 +169,7 @@ def formulaire_auth() -> bool:
                     {"email": email.strip(), "password": mdp})
                 _memoriser(res.user, client)
                 if res.session and res.session.refresh_token:
-                    _cookie_set(res.session.refresh_token)
+                    st.session_state["_save_rt"] = res.session.refresh_token
                 st.rerun()
             except Exception:
                 st.error("Email ou mot de passe incorrect (ou compte pas encore confirmé).")
@@ -180,7 +192,7 @@ def formulaire_auth() -> bool:
                     else:
                         _memoriser(res.user, client)
                         if res.session and res.session.refresh_token:
-                            _cookie_set(res.session.refresh_token)
+                            st.session_state["_save_rt"] = res.session.refresh_token
                         st.rerun()
                 except Exception as e:
                     st.error(f"Inscription impossible : {e}")
