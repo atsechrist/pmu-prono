@@ -168,6 +168,10 @@ def features_pour_prediction(df: pd.DataFrame) -> pd.DataFrame:
     df = pd.concat([df, muzik], axis=1)
     # cote du matin
     df["cote_reference"] = pd.to_numeric(df["cote_reference"], errors="coerce")
+    # colonnes numeriques brutes : certaines courses (anciennes) les renvoient en texte
+    for _col in ["age", "distance", "nb_partants", "place_corde", "handicap_poids"]:
+        if _col in df.columns:
+            df[_col] = pd.to_numeric(df[_col], errors="coerce")
     # carriere
     nc = pd.to_numeric(df["nombre_courses"], errors="coerce").replace(0, np.nan)
     df["ratio_victoires"] = pd.to_numeric(df["nombre_victoires"], errors="coerce") / nc

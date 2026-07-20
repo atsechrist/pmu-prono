@@ -599,8 +599,8 @@ st.warning("⚠️ Les ROI positifs viennent en partie d'effets structurels du m
            "rapport → rendement reel plus bas. A voir comme un plafond optimiste, pas une promesse.")
 
 NIVEAUX = {"FORT": "🟢 FORT", "Moyen": "🟡 Moyen",
-           "MIX": "🎲 MIX (Placé Fort + Gagnant Moyen)"}
-ORDRE_NIV = ["SUPER", "FORT", "Moyen", "MIX"]
+           "MIX": "🎲 MIX (Placé Fort + Gagnant Moyen)", "STD": "📊 Résultat"}
+ORDRE_NIV = ["SUPER", "FORT", "Moyen", "MIX", "STD"]
 
 def afficher_perf(hist, strat, label_succes):
     h = hist[hist["strategie"] == strat]
@@ -649,7 +649,9 @@ else:
     for _c in ["paris", "succes", "gains", "profit"]:
         hist[_c] = pd.to_numeric(hist[_c], errors="coerce")
     hist["date"] = pd.to_datetime(hist["date"])
-    tab_p, tab_g, tab_m, tab_q = st.tabs(["⭐ Placé", "🏆 Gagnant", "🎲 Mix", "🎰 Quinté+"])
+    tab_p, tab_g, tab_m, tab_q, tab_cg, tab_cp, tab_t = st.tabs(
+        ["⭐ Placé", "🏆 Gagnant", "🎲 Mix", "🎰 Quinté+",
+         "🎫 Couplé G", "🎫 Couplé P", "🔀 Trio"])
     with tab_p:
         afficher_perf(hist, "PLACE", "Taux de placé")
         # --- Telechargement du detail d'un mois (Placé FORT, par heure) ---
@@ -735,6 +737,19 @@ else:
                 "tu perds. A jouer pour le frisson, avec de tres petites sommes — jamais comme un revenu.")
         else:
             st.info("Historique Quinté pas encore genere (lance `python historique.py`).")
+
+    with tab_cg:
+        st.caption("Les 2 meilleurs chevaux du modèle joués au **Couplé Gagnant** "
+                   "(gagné s'ils finissent 1er et 2e).")
+        afficher_perf(hist, "COUPLE_G", "Taux de réussite")
+    with tab_cp:
+        st.caption("Les 2 meilleurs chevaux du modèle joués au **Couplé Placé** "
+                   "(gagné s'ils finissent tous les deux placés).")
+        afficher_perf(hist, "COUPLE_P", "Taux de réussite")
+    with tab_t:
+        st.caption("Les 3 meilleurs chevaux du modèle joués au **Trio** "
+                   "(gagné si les 3 finissent dans les 3 premiers).")
+        afficher_perf(hist, "TRIO", "Taux de réussite")
 
 st.divider()
 st.caption("⚠️ Rappel : jeu d'argent = risque. Ce modele a un petit avantage backteste "
