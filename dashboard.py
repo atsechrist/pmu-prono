@@ -15,6 +15,28 @@ import auth
 st.set_page_config(page_title="PMU Prono", page_icon="🐎", layout="wide")
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _charger_hist(table):
+    """Charge une table d'historique depuis Supabase (lecture publique), paginée."""
+    cli = auth._anon_client()
+    rows, i, taille = [], 0, 1000
+    while True:
+        lot = cli.table(table).select("*").range(i, i + taille - 1).execute().data
+        rows.extend(lot or [])
+        if not lot or len(lot) < taille:
+            break
+        i += taille
+    return pd.DataFrame(rows)
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _charger_detail_mois(mois):
+    """Charge le détail Placé FORT d'un mois depuis Supabase."""
+    cli = auth._anon_client()
+    lot = cli.table("hist_detail").select("*").eq("mois", mois).execute().data
+    return pd.DataFrame(lot or [])
+
+
 def verifier_acces():
     """Page d'accueil + connexion (tant que l'utilisateur n'est pas connecté)."""
     if auth.utilisateur_actuel():
@@ -620,27 +642,30 @@ def afficher_perf(hist, strat, label_succes):
         vue = pm[["Mois", "Paris", label_succes, "Bénéfice (€)", "Bankroll (€)", "ROI"]]
         st.dataframe(vue, use_container_width=True, hide_index=True, height=min(500, 60 + 35 * len(vue)))
 
-if not os.path.exists("historique_perf.csv"):
-    st.info("Historique pas encore genere. Lance `python historique.py` une fois pour le creer.")
+hist = _charger_hist("hist_perf")
+if hist.empty:
+    st.info("Historique momentanement indisponible.")
 else:
-    hist = pd.read_csv("historique_perf.csv")
+    for _c in ["paris", "succes", "gains", "profit"]:
+        hist[_c] = pd.to_numeric(hist[_c], errors="coerce")
     hist["date"] = pd.to_datetime(hist["date"])
     tab_p, tab_g, tab_m, tab_q = st.tabs(["⭐ Placé", "🏆 Gagnant", "🎲 Mix", "🎰 Quinté+"])
     with tab_p:
         afficher_perf(hist, "PLACE", "Taux de placé")
         # --- Telechargement du detail d'un mois (Placé FORT, par heure) ---
-        if os.path.exists("historique_detail.csv"):
-            det = pd.read_csv("historique_detail.csv")
-            st.markdown("**📄 Télécharger le détail d'un mois** (Placé FORT, trié par heure) :")
-            mois_dispo = sorted(det["mois"].astype(str).unique(), reverse=True)
-            m_sel = st.selectbox("Mois", mois_dispo, key="mois_detail_place")
-            dm = det[det["mois"].astype(str) == m_sel]
-            st.download_button(
-                f"📄 Détail {m_sel} en PDF ({len(dm)} paris)",
-                data=detail_mois_pdf(m_sel, dm),
-                file_name=f"detail_place_fort_{m_sel}.pdf",
-                mime="application/pdf",
-                key="dl_detail_place")
+        st.markdown("**📄 Télécharger le détail d'un mois** (Placé FORT, trié par heure) :")
+        mois_dispo = sorted(hist["date"].dt.strftime("%Y-%m").unique(), reverse=True)
+        m_sel = st.selectbox("Mois", mois_dispo, key="mois_detail_place")
+        dm = _charger_detail_mois(m_sel)
+        for _c in ["heure_depart", "num", "proba", "place", "rapport_place", "gain"]:
+            if _c in dm.columns:
+                dm[_c] = pd.to_numeric(dm[_c], errors="coerce")
+        st.download_button(
+            f"📄 Détail {m_sel} en PDF ({len(dm)} paris)",
+            data=detail_mois_pdf(m_sel, dm),
+            file_name=f"detail_place_fort_{m_sel}.pdf",
+            mime="application/pdf",
+            key="dl_detail_place")
     with tab_g:
         st.caption("Le Gagnant est plus variable : des mois entiers peuvent etre negatifs.")
         afficher_perf(hist, "GAGNANT", "Taux de victoire")
@@ -649,9 +674,19 @@ else:
                    "~2 paris par course. Le bénéfice total est le plus élevé de toutes les stratégies.")
         afficher_perf(hist, "MIX", "Taux de réussite")
     with tab_q:
-        if os.path.exists("quinte_resume.csv") and os.path.exists("historique_quinte.csv"):
-            r = pd.read_csv("quinte_resume.csv").iloc[0]
-            hq = pd.read_csv("historique_quinte.csv")
+        hqc = _charger_hist("hist_quinte")
+        if not hqc.empty:
+            for _c in ["gain_ordre", "gain_des"]:
+                hqc[_c] = pd.to_numeric(hqc[_c], errors="coerce")
+            hq = hqc.groupby("mois").agg(
+                courses=("course_id", "size"), gain_ordre=("gain_ordre", "sum"),
+                gain_des=("gain_des", "sum")).reset_index()
+            hq["mise"] = hq["courses"]
+            _n = len(hqc)
+            r = {"quinte": _n, "mise": float(_n),
+                 "gain_ordre": float(hqc["gain_ordre"].sum()), "gain_des": float(hqc["gain_des"].sum()),
+                 "hits_ordre": int((hqc["gain_ordre"] > 0).sum()),
+                 "hits_des": int((hqc["gain_des"] > 0).sum())}
             mise = int(r["mise"])
             st.markdown(f"**Ticket = les 5 meilleurs du modèle, 1 €/course, sur {int(r['quinte'])} "
                         "Quinté (2021-2026) :**")
