@@ -10,6 +10,7 @@ import streamlit as st
 
 from pronos_jour import pronostics
 from export_pdf import selection_pdf, detail_mois_pdf, mix_pdf
+import couples_lib
 import auth
 
 st.set_page_config(page_title="PMU Prono", page_icon="🐎", layout="wide")
@@ -549,6 +550,71 @@ if auth.a_droit("quinte"):
     st.warning("⚠️ Le Quinté+ est une LOTERIE : meme avec une bonne base, tu perds la plupart du "
                "temps, et le gros lot demande l'ordre EXACT. A jouer pour le plaisir/le jackpot, "
                "avec de petites sommes — jamais comme une strategie de gain.")
+
+# ═══════════════════════════════════════════════════════════════
+#  COUPLE & TRIO du jour (top-2 / top-3 du modele par proba de placé)
+# ═══════════════════════════════════════════════════════════════
+st.header("🎫 Couplé & Trio du jour")
+st.caption("Par course : les **2 meilleurs** du modèle joués au **Couplé** (Gagnant + Placé) "
+           "et les **3 meilleurs** au **Trio**. Choix par la proba de placé. "
+           "Résultats en direct au fil des arrivées.")
+
+
+def _res_ct(ok, finie):
+    """Verdict d'un pari couplé/trio : à venir, gagné ✅ ou perdu ❌."""
+    if not finie:
+        return "⏳ à venir"
+    return "✅" if ok else "❌"
+
+
+lignes_ct = []
+for _course, _g in df.groupby("course"):
+    _g = _g.sort_values("rang_place")
+    _top = [int(x) for x in _g["num_pmu"]]
+    if len(_top) < 2:
+        continue
+    _arr = [int(x) for x in _g.dropna(subset=["position"]).sort_values("position")["num_pmu"]]
+    try:
+        _nb = int(_g["nb_partants"].iloc[0])
+    except (ValueError, TypeError):
+        _nb = len(_g)
+    _finie = bool(_g["course_finie"].iloc[0])
+    _cg = _cp = _tr = None
+    if _finie:
+        _cg, _cp, _tr = couples_lib.gagnants(_top, _arr, _nb)
+    _a_trio = len(_top) >= 3
+    lignes_ct.append({
+        "course": _course,
+        "heure": _g["heure"].iloc[0],
+        "Hippodrome": _g["hippodrome"].iloc[0],
+        "Couplé (top 2)": " + ".join(f"#{n}" for n in _top[:2]),
+        "Couplé G": _res_ct(_cg, _finie),
+        "Couplé P": _res_ct(_cp, _finie),
+        "Trio (top 3)": " + ".join(f"#{n}" for n in _top[:3]) if _a_trio else "—",
+        "Trio": (_res_ct(_tr, _finie) if _a_trio else "—"),
+    })
+
+if lignes_ct:
+    ct = pd.DataFrame(lignes_ct).sort_values("heure", na_position="last")
+    ct["Heure GMT"] = ct["heure"].apply(heure_gmt)
+
+    couru_ct = ct[ct[["Couplé G", "Couplé P", "Trio"]].apply(
+        lambda r: any(v in ("✅", "❌") for v in r), axis=1)]
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Courses du jour", len(ct))
+    m2.metric("Couplé G réussis", int((ct["Couplé G"] == "✅").sum()))
+    m3.metric("Couplé P réussis", int((ct["Couplé P"] == "✅").sum()))
+    m4.metric("Trio réussis", int((ct["Trio"] == "✅").sum()))
+
+    vue_ct = ct[["course", "Heure GMT", "Hippodrome", "Couplé (top 2)", "Couplé G",
+                 "Couplé P", "Trio (top 3)", "Trio"]].rename(columns={"course": "Course"})
+    st.dataframe(vue_ct, use_container_width=True, hide_index=True,
+                 height=min(700, 60 + 35 * len(vue_ct)))
+    st.caption("**Couplé G** = les 2 finissent 1er-2e · **Couplé P** = les 2 dans les placés · "
+               "**Trio** = les 3 dans les 3 premiers (ordre indifférent). "
+               "Le Trio n'est pas proposé sur toutes les courses (Tiercé sur les courses phares).")
+else:
+    st.info("Aucune course exploitable pour cette date.")
 
 # ═══════════════════════════════════════════════════════════════
 #  DETAIL PAR COURSE
