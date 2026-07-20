@@ -1,0 +1,30 @@
+name: MAJ historique du jour
+
+# Ajoute chaque matin les résultats de la veille dans Supabase (hist_perf / hist_detail / hist_quinte).
+# Plus besoin de lancer "Mettre a jour.bat" à la main.
+
+on:
+  schedule:
+    # 07h00 UTC = 07h00 Abidjan (GMT+0). La veille est entièrement terminée à cette heure.
+    - cron: "0 7 * * *"
+  workflow_dispatch: {}   # permet de lancer à la main depuis l'onglet Actions
+
+jobs:
+  maj:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer les dépendances
+        run: pip install pandas numpy lightgbm httpx psycopg2-binary
+
+      - name: Ajouter la journée de la veille
+        env:
+          PG_DSN: ${{ secrets.PG_DSN }}
+        run: python maj_jour.py
