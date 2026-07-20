@@ -552,22 +552,67 @@ if auth.a_droit("quinte"):
                "avec de petites sommes — jamais comme une strategie de gain.")
 
 # ═══════════════════════════════════════════════════════════════
-#  COUPLE & TRIO du jour (top-2 / top-3 du modele par proba de placé)
+#  COUPLE & TRIO du jour — disponibilité (programme) + dividendes (rapports)
 # ═══════════════════════════════════════════════════════════════
-st.header("🎫 Couplé & Trio du jour")
-st.caption("Par course : les **2 meilleurs** du modèle joués au **Couplé** (Gagnant + Placé) "
-           "et les **3 meilleurs** au **Trio**. Choix par la proba de placé. "
-           "Résultats en direct au fil des arrivées.")
+import asyncio
+import httpx as _httpx
+
+_BASE_CT = "https://online.turfinfo.api.pmu.fr/rest/client/1/programme"
+_H_CT = {"User-Agent": "Mozilla/5.0"}
 
 
-def _res_ct(ok, finie):
-    """Verdict d'un pari couplé/trio : à venir, gagné ✅ ou perdu ❌."""
-    if not finie:
-        return "⏳ à venir"
-    return "✅" if ok else "❌"
+async def _get_ct(client, sem, url):
+    for _ in range(3):
+        try:
+            async with sem:
+                r = await client.get(url, timeout=20)
+            if r.status_code == 200:
+                return r.json()
+            if r.status_code in (204, 404):
+                return None
+        except Exception:
+            await asyncio.sleep(1)
+    return None
 
 
-lignes_ct = []
+async def _couples_data(jour_iso, courses_finies):
+    """Retourne (dispo, rapports) : paris disponibles par course + rapports des courses finies."""
+    jj = jour_iso[8:10] + jour_iso[5:7] + jour_iso[0:4]
+    sem = asyncio.Semaphore(10)
+    dispo, rapports = {}, {}
+    async with _httpx.AsyncClient(headers=_H_CT) as client:
+        prog = await _get_ct(client, sem, f"{_BASE_CT}/{jj}")
+        for reu in (prog or {}).get("programme", {}).get("reunions", []) or []:
+            pays = reu.get("pays")
+            code = pays.get("code") if isinstance(pays, dict) else pays
+            if code != "FRA":
+                continue
+            for c in reu.get("courses", []) or []:
+                dispo[f"R{c['numReunion']}C{c['numOrdre']}"] = {
+                    p.get("typePari") for p in (c.get("paris") or [])}
+
+        async def _one(course):
+            nR = course.split("C")[0][1:]
+            nC = course.split("C")[1]
+            return course, await _get_ct(client, sem, f"{_BASE_CT}/{jj}/R{nR}/C{nC}/rapports-definitifs")
+
+        for course, data in await asyncio.gather(*[_one(c) for c in courses_finies]):
+            rapports[course] = data
+    return dispo, rapports
+
+
+@st.cache_data(ttl=180, show_spinner="Calcul des couplés / trios du jour...")
+def charger_couples_jour(jour_iso, courses_finies):
+    return asyncio.run(_couples_data(jour_iso, courses_finies))
+
+
+# --- Calcul des picks + résultats + dividendes, une ligne par course ---
+courses_finies_ct = tuple(sorted(df[df["course_finie"]]["course"].unique().tolist()))
+if rafraichir:
+    charger_couples_jour.clear()
+dispo_ct, rapports_ct = charger_couples_jour(jour.isoformat(), courses_finies_ct)
+
+_records_ct = []
 for _course, _g in df.groupby("course"):
     _g = _g.sort_values("rang_place")
     _top = [int(x) for x in _g["num_pmu"]]
@@ -579,42 +624,105 @@ for _course, _g in df.groupby("course"):
     except (ValueError, TypeError):
         _nb = len(_g)
     _finie = bool(_g["course_finie"].iloc[0])
-    _cg = _cp = _tr = None
+    _av = dispo_ct.get(_course, set())
+    _cg = _cp = _tr = False
     if _finie:
         _cg, _cp, _tr = couples_lib.gagnants(_top, _arr, _nb)
-    _a_trio = len(_top) >= 3
-    lignes_ct.append({
-        "course": _course,
-        "heure": _g["heure"].iloc[0],
-        "Hippodrome": _g["hippodrome"].iloc[0],
-        "Couplé (top 2)": " + ".join(f"#{n}" for n in _top[:2]),
-        "Couplé G": _res_ct(_cg, _finie),
-        "Couplé P": _res_ct(_cp, _finie),
-        "Trio (top 3)": " + ".join(f"#{n}" for n in _top[:3]) if _a_trio else "—",
-        "Trio": (_res_ct(_tr, _finie) if _a_trio else "—"),
-    })
+    _rap = rapports_ct.get(_course)
+    _cg_div = couples_lib.dividende(_rap, "COUPLE_GAGNANT", {str(_arr[0]), str(_arr[1])}) if (_finie and _cg) else 0.0
+    _cp_div = couples_lib.dividende(_rap, "COUPLE_PLACE", {str(_top[0]), str(_top[1])}) if (_finie and _cp) else 0.0
+    _tr_div = couples_lib.dividende(_rap, "TRIO", {str(_top[0]), str(_top[1]), str(_top[2])}) if (_finie and _tr and len(_top) >= 3) else 0.0
+    _records_ct.append(dict(
+        course=_course, heure=_g["heure"].iloc[0], hippodrome=_g["hippodrome"].iloc[0],
+        couple_pick=" + ".join(f"#{n}" for n in _top[:2]),
+        trio_pick=(" + ".join(f"#{n}" for n in _top[:3]) if len(_top) >= 3 else "—"),
+        cg_dispo=("COUPLE_GAGNANT" in _av), cp_dispo=("COUPLE_PLACE" in _av),
+        trio_dispo=("TRIO" in _av and len(_top) >= 3),
+        finie=_finie, cg=_cg, cp=_cp, tr=_tr,
+        cg_div=_cg_div, cp_div=_cp_div, tr_div=_tr_div,
+    ))
 
-if lignes_ct:
-    ct = pd.DataFrame(lignes_ct).sort_values("heure", na_position="last")
-    ct["Heure GMT"] = ct["heure"].apply(heure_gmt)
+ct = pd.DataFrame(_records_ct, columns=[
+    "course", "heure", "hippodrome", "couple_pick", "trio_pick",
+    "cg_dispo", "cp_dispo", "trio_dispo", "finie", "cg", "cp", "tr",
+    "cg_div", "cp_div", "tr_div"])
 
-    couru_ct = ct[ct[["Couplé G", "Couplé P", "Trio"]].apply(
-        lambda r: any(v in ("✅", "❌") for v in r), axis=1)]
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Courses du jour", len(ct))
-    m2.metric("Couplé G réussis", int((ct["Couplé G"] == "✅").sum()))
-    m3.metric("Couplé P réussis", int((ct["Couplé P"] == "✅").sum()))
-    m4.metric("Trio réussis", int((ct["Trio"] == "✅").sum()))
 
-    vue_ct = ct[["course", "Heure GMT", "Hippodrome", "Couplé (top 2)", "Couplé G",
-                 "Couplé P", "Trio (top 3)", "Trio"]].rename(columns={"course": "Course"})
-    st.dataframe(vue_ct, use_container_width=True, hide_index=True,
-                 height=min(700, 60 + 35 * len(vue_ct)))
-    st.caption("**Couplé G** = les 2 finissent 1er-2e · **Couplé P** = les 2 dans les placés · "
-               "**Trio** = les 3 dans les 3 premiers (ordre indifférent). "
-               "Le Trio n'est pas proposé sur toutes les courses (Tiercé sur les courses phares).")
+def _bloc_fin_ct(titre, sub, col_ok, col_div):
+    """Rapport financier d'une stratégie couplé/trio (mêmes métriques que les autres)."""
+    couru = sub[sub["finie"]]
+    st.markdown(f"**{titre}**")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Paris du jour", len(sub))
+    c2.metric("Déjà courus", len(couru))
+    if len(couru):
+        wins = couru[col_ok].astype(bool)
+        gains = float(couru[col_div].sum())
+        profit = gains - len(couru)
+        c3.metric("Réussite", f"{wins.mean():.0%}", f"{int(wins.sum())}/{len(couru)}")
+        c4.metric("Bénéfice (1€/pari)", f"{profit:+.1f} €", f"ROI {profit/len(couru):+.0%}")
+    else:
+        c3.metric("Réussite", "—")
+        c4.metric("Bénéfice (1€/pari)", "—")
+
+
+def _cell_ct(finie, dispo, ok, div):
+    """Cellule résultat : — indispo, ⏳ à venir, ✅ +rapport gagné, ❌ perdu."""
+    if not dispo:
+        return "—"
+    if not finie:
+        return "⏳"
+    return f"✅ {div:.2f} €" if ok else "❌"
+
+
+# ═══════════════════════════════════════════════════════════════
+#  COUPLE du jour (les 2 meilleurs du modèle : Gagnant + Placé)
+# ═══════════════════════════════════════════════════════════════
+st.header("🎫 Couplé du jour")
+st.caption("Les **2 meilleurs chevaux** du modèle (proba de placé), joués au **Couplé Gagnant** "
+           "ET au **Couplé Placé**. Résultats et rapports en direct au fil des arrivées.")
+
+_cpl = ct[ct["cg_dispo"] | ct["cp_dispo"]].copy()
+if _cpl.empty:
+    st.info("Aucun couplé disponible pour cette date.")
 else:
-    st.info("Aucune course exploitable pour cette date.")
+    _col_g, _col_p = st.columns(2)
+    with _col_g:
+        _bloc_fin_ct("🏆 Couplé Gagnant (les 2 → 1er-2e)", ct[ct["cg_dispo"]], "cg", "cg_div")
+    with _col_p:
+        _bloc_fin_ct("⭐ Couplé Placé (les 2 placés)", ct[ct["cp_dispo"]], "cp", "cp_div")
+
+    _cpl = _cpl.sort_values("heure", na_position="last")
+    _cpl["Heure GMT"] = _cpl["heure"].apply(heure_gmt)
+    _cpl["Gagnant"] = _cpl.apply(lambda r: _cell_ct(r["finie"], r["cg_dispo"], r["cg"], r["cg_div"]), axis=1)
+    _cpl["Placé"] = _cpl.apply(lambda r: _cell_ct(r["finie"], r["cp_dispo"], r["cp"], r["cp_div"]), axis=1)
+    _vue_cpl = _cpl[["course", "Heure GMT", "hippodrome", "couple_pick", "Gagnant", "Placé"]].copy()
+    _vue_cpl.columns = ["Course", "Heure GMT", "Hippodrome", "Couplé (top 2)", "Gagnant", "Placé"]
+    st.dataframe(_vue_cpl, use_container_width=True, hide_index=True,
+                 height=min(700, 60 + 35 * len(_vue_cpl)))
+    st.caption("Cellule = verdict + rapport gagné pour 1 € misé. "
+               "**Gagnant** = les 2 finissent 1er et 2e · **Placé** = les 2 dans les placés.")
+
+# ═══════════════════════════════════════════════════════════════
+#  TRIO du jour (les 3 meilleurs du modèle)
+# ═══════════════════════════════════════════════════════════════
+st.header("🔀 Trio du jour")
+st.caption("Les **3 meilleurs chevaux** du modèle joués au **Trio** "
+           "(gagné si les 3 finissent dans les 3 premiers, ordre indifférent).")
+
+_tri = ct[ct["trio_dispo"]].copy()
+if _tri.empty:
+    st.info("Aucun Trio disponible pour cette date (Tiercé sur les courses phares).")
+else:
+    _bloc_fin_ct("🔀 Trio (les 3 dans les 3 premiers)", _tri, "tr", "tr_div")
+    _tri = _tri.sort_values("heure", na_position="last")
+    _tri["Heure GMT"] = _tri["heure"].apply(heure_gmt)
+    _tri["Résultat"] = _tri.apply(lambda r: _cell_ct(r["finie"], r["trio_dispo"], r["tr"], r["tr_div"]), axis=1)
+    _vue_tri = _tri[["course", "Heure GMT", "hippodrome", "trio_pick", "Résultat"]].copy()
+    _vue_tri.columns = ["Course", "Heure GMT", "Hippodrome", "Trio (top 3)", "Résultat"]
+    st.dataframe(_vue_tri, use_container_width=True, hide_index=True,
+                 height=min(700, 60 + 35 * len(_vue_tri)))
+    st.caption("Cellule = verdict + rapport gagné pour 1 € misé.")
 
 # ═══════════════════════════════════════════════════════════════
 #  DETAIL PAR COURSE
