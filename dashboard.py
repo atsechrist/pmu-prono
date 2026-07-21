@@ -11,6 +11,7 @@ import streamlit as st
 from pronos_jour import pronostics
 from export_pdf import selection_pdf, detail_mois_pdf, mix_pdf
 import auth
+import figeage
 
 st.set_page_config(page_title="PMU Prono", page_icon="🐎", layout="wide")
 
@@ -278,6 +279,54 @@ st.success(f"{df['course'].nunique()} courses - {len(df)} partants analyses  "
            f"·  {nb_finies} courses terminées  ·  chargé à {heure_charge}")
 st.caption("Les résultats se figent au chargement. Clique **🔄 Actualiser les résultats** "
            "pour récupérer les arrivées des courses courues depuis.")
+
+# ═══════════════════════════════════════════════════════════════
+#  FIGEAGE DU MATIN — garde tes pronos (chevaux + cotes) tels qu'au moment du pari
+# ═══════════════════════════════════════════════════════════════
+_uid = auth.utilisateur_actuel()["id"]
+_est_aujourdhui = (jour == date.today())
+_snap_df, _frozen_at = figeage.charger(_uid, jour.isoformat())
+
+if _snap_df is not None:
+    # On affiche les prédictions FIGÉES + les résultats EN DIRECT
+    _df_live = df
+    df = figeage.fusionner(_snap_df, _df_live)
+    _chg = figeage.changements(_snap_df, _df_live)
+
+    _q = _frozen_at[:16].replace("T", " ") if _frozen_at else "?"
+    cga, cgb = st.columns([3, 1])
+    cga.info(f"🔒 **Sélection figée** (le {_q} UTC). Tu vois les chevaux et les cotes de ton "
+             "figeage ; seuls les **résultats** se mettent à jour. Les recalculs de cote "
+             "n'affectent plus ton affichage.")
+    with cgb:
+        if _est_aujourdhui and st.button("🔄 Re-figer (cotes actuelles)", use_container_width=True):
+            _ok, _err = figeage.enregistrer(_uid, jour.isoformat(), _df_live)
+            if _ok:
+                st.rerun()
+            else:
+                st.error(f"Re-figeage impossible : {_err}")
+        if st.button("🔓 Défiger", use_container_width=True):
+            figeage.supprimer(_uid, jour.isoformat())
+            st.rerun()
+
+    if _chg:
+        with st.expander(f"⚠️ {len(_chg)} course(s) où le modèle choisirait autrement maintenant "
+                         "(cote bougée ou cheval retiré depuis ton figeage)"):
+            st.caption("Ça n'change PAS ton affichage figé — c'est juste pour t'informer de "
+                       "l'évolution depuis que tu as parié.")
+            for _course, _hip, _notes in _chg:
+                st.markdown(f"**{_course}** {_hip} — " + " · ".join(_notes))
+elif _est_aujourdhui:
+    st.info("💡 **Tu as placé tes paris ?** Fige ta sélection pour la garder telle quelle "
+            "(chevaux + cotes du matin), même si une cote bouge ou qu'un cheval est retiré "
+            "ensuite. L'app continuera d'afficher **ce que tu as joué** et n'actualisera que "
+            "les résultats.")
+    if st.button("🔒 Figer ma sélection du matin"):
+        _ok, _err = figeage.enregistrer(_uid, jour.isoformat(), df)
+        if _ok:
+            st.rerun()
+        else:
+            st.error(f"Figeage impossible : {_err}")
 
 # ═══════════════════════════════════════════════════════════════
 #  SELECTION MIX du jour (EN PREMIER — Placé Fort + Gagnant Moyen)
