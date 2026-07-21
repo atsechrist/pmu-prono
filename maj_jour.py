@@ -18,7 +18,6 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 from pronos_jour import pronostics
-import couples_lib
 
 DSN = os.environ["PG_DSN"]
 BASE = "https://online.turfinfo.api.pmu.fr/rest/client/1/programme"
@@ -120,80 +119,6 @@ def calc_quinte(df, jour):
     return (f"{jour}_{course}", jour, jour[:7], gain_ordre, gain_des)
 
 
-async def _get_c(client, url):
-    for _ in range(3):
-        try:
-            r = await client.get(url, timeout=20)
-            if r.status_code == 200:
-                return r.json()
-            if r.status_code in (204, 404):
-                return None
-        except Exception:
-            await asyncio.sleep(2)
-    return None
-
-
-async def _couples_async(df, jour):
-    """Couplé Gagnant / Couplé Placé / Trio pour la journée (pipeline live)."""
-    jj = jour[8:10] + jour[5:7] + jour[0:4]
-    stats = {k: {"paris": 0, "succes": 0, "gains": 0.0} for k in ("COUPLE_G", "COUPLE_P", "TRIO")}
-    a_chercher = {}
-    async with httpx.AsyncClient(headers=HEADERS) as client:
-        prog = await _get_c(client, f"{BASE}/{jj}")
-        dispo = {}
-        for reu in (prog or {}).get("programme", {}).get("reunions", []) or []:
-            pays = reu.get("pays"); code = pays.get("code") if isinstance(pays, dict) else pays
-            if code != "FRA":
-                continue
-            for c in reu.get("courses", []) or []:
-                dispo[f"R{c['numReunion']}C{c['numOrdre']}"] = {p.get("typePari") for p in (c.get("paris") or [])}
-
-        for course, g in df.groupby("course"):
-            top = [int(x) for x in g.sort_values("rang_place")["num_pmu"]]
-            arr = [int(x) for x in g.dropna(subset=["position"]).sort_values("position")["num_pmu"]]
-            try:
-                nb = int(g["nb_partants"].iloc[0])
-            except Exception:
-                nb = len(g)
-            av = dispo.get(course, set())
-            cg, cp, tr = couples_lib.gagnants(top, arr, nb)
-            if "COUPLE_GAGNANT" in av and len(top) >= 2:
-                stats["COUPLE_G"]["paris"] += 1
-                if cg:
-                    stats["COUPLE_G"]["succes"] += 1
-                    a_chercher.setdefault(course, []).append(("COUPLE_G", "COUPLE_GAGNANT", {str(arr[0]), str(arr[1])}))
-            if "COUPLE_PLACE" in av and len(top) >= 2:
-                stats["COUPLE_P"]["paris"] += 1
-                if cp:
-                    stats["COUPLE_P"]["succes"] += 1
-                    a_chercher.setdefault(course, []).append(("COUPLE_P", "COUPLE_PLACE", {str(top[0]), str(top[1])}))
-            if "TRIO" in av and len(top) >= 3:
-                stats["TRIO"]["paris"] += 1
-                if tr:
-                    stats["TRIO"]["succes"] += 1
-                    a_chercher.setdefault(course, []).append(("TRIO", "TRIO", {str(top[0]), str(top[1]), str(top[2])}))
-
-        for course, demandes in a_chercher.items():
-            nR = course.split("C")[0][1:]; nC = course.split("C")[1]
-            rap = await _get_c(client, f"{BASE}/{jj}/R{nR}/C{nC}/rapports-definitifs")
-            for strat, type_pari, gag in demandes:
-                stats[strat]["gains"] += couples_lib.dividende(rap, type_pari, gag)
-
-    rows = []
-    for strat, s in stats.items():
-        if s["paris"]:
-            rows.append((jour, strat, "STD", s["paris"], s["succes"],
-                         round(s["gains"], 2), round(s["gains"] - s["paris"], 2)))
-    return rows
-
-
-def calc_couples(df, jour):
-    df = df[df["course_finie"] == True]
-    if df.empty:
-        return []
-    return asyncio.run(_couples_async(df, jour))
-
-
 def main():
     jour = (date.today() - timedelta(days=1)).isoformat()
     print(f"[maj_jour] Jour traité : {jour}")
@@ -208,7 +133,6 @@ def main():
 
     perf, detail = calc_perf_detail(df, jour)
     quinte = calc_quinte(df, jour)
-    perf = perf + calc_couples(df, jour)   # ajoute Couplé G/P + Trio (mêmes lignes hist_perf)
     print(f"[maj_jour] perf={len(perf)} lignes, detail={len(detail)}, quinté={'oui' if quinte else 'non'}")
 
     conn = psycopg2.connect(DSN)
