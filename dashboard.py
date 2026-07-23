@@ -677,6 +677,7 @@ def afficher_perf(hist, strat, label_succes):
     st.line_chart(piv, height=260)
 
     # --- Récap MENSUEL par niveau pour suivre la bankroll ---
+    recaps = []
     for niv in niveaux:
         sub = h[h["confiance"] == niv].copy()
         st.markdown(f"**📅 Récap par mois — {NIVEAUX[niv]}** (mise 1€/pari) :")
@@ -690,6 +691,19 @@ def afficher_perf(hist, strat, label_succes):
         pm = pm.rename(columns={"paris": "Paris"})
         vue = pm[["Mois", "Paris", label_succes, "Bénéfice (€)", "Bankroll (€)", "ROI"]]
         st.dataframe(vue, use_container_width=True, hide_index=True, height=min(500, 60 + 35 * len(vue)))
+        v = vue.copy()
+        v.insert(1, "Niveau", NIVEAUX[niv])
+        recaps.append(v)
+
+    # --- Téléchargement du récap mensuel (toutes les stratégies l'ont) ---
+    if recaps:
+        export = pd.concat(recaps, ignore_index=True)
+        st.download_button(
+            "📥 Télécharger le récap mensuel (CSV)",
+            data=export.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"recap_{strat.lower()}.csv",
+            mime="text/csv",
+            key=f"dl_recap_{strat}")
 
 hist = _charger_hist("hist_perf")
 if hist.empty:
@@ -774,6 +788,12 @@ else:
             vueq = q[["Mois", "Quinté", "Bénéf. Ordre (€)", "Bénéf. Désordre (€)",
                       "Bankroll Ordre (€)", "Bankroll Désordre (€)"]]
             st.dataframe(vueq, use_container_width=True, hide_index=True, height=min(500, 60 + 35 * len(vueq)))
+            st.download_button(
+                "📥 Télécharger le récap mensuel (CSV)",
+                data=vueq.to_csv(index=False).encode("utf-8-sig"),
+                file_name="recap_quinte.csv",
+                mime="text/csv",
+                key="dl_recap_quinte")
 
             st.error(
                 f"⚠️ Ne te fie PAS a ces montants positifs. Le jeu **Ordre n'est tombé que "
